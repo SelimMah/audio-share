@@ -2,7 +2,7 @@
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
 #define MyAppName "Audio Share"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppExeName "AudioShare.exe"
 
 [Setup]
@@ -43,8 +43,11 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
+; Installation interactive : case « Lancer Audio Share » en fin d'assistant
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
     Flags: nowait postinstall skipifsilent
+; Mise à jour silencieuse (auto-update) : relancer l'app d'office
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall skipifnotsilent
 
 [Code]
 // Mise à jour : l'app vit dans la zone de notification sans fenêtre visible,

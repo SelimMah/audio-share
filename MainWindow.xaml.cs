@@ -81,6 +81,11 @@ public partial class MainWindow : Window
             _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _pollTimer.Tick += (_, _) => PollPhoneSession();
             _pollTimer.Start();
+
+            // Mise à jour automatique en arrière-plan : si une nouvelle release
+            // existe, l'installateur silencieux remplace l'app et la relance.
+            _ = Updater.CheckAndUpdateAsync(msg =>
+                Dispatcher.Invoke(() => _tray.Notify("Audio Share", msg)));
         };
     }
 

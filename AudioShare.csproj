@@ -10,6 +10,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AudioShare</AssemblyName>
     <RootNamespace>AudioShare</RootNamespace>
+    <!-- À garder synchronisée avec MyAppVersion dans installer.iss :
+         c'est elle que l'app compare à la derniere release GitHub -->
+    <Version>1.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
