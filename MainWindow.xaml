@@ -186,9 +186,24 @@
                      section devient « SENT AUDIO » pendant l'émission et le
                      curseur pilote alors le volume émis. -->
                 <TextBlock x:Name="VolumeHeader" Text="RECEIVED AUDIO" Style="{StaticResource SectionHeader}"/>
-                <Border Style="{StaticResource Card}" Padding="12,10,16,10" Margin="0,0,0,10">
-                    <StackPanel>
-                        <Grid>
+                <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,10">
+                    <Grid>
+                        <!-- Vumètre : aurore diffuse sur tout le fond de la carte —
+                             des nappes de couleur floutées qui respirent (opacité)
+                             et dérivent en 2D avec le niveau du son. Invisible au
+                             repos ; le clip arrondi (posé en code) suit la carte. -->
+                        <Border x:Name="VuClip">
+                            <!-- Canvas : taille nulle en layout, les nappes peuvent
+                                 déborder sans agrandir la carte — le clip coupe.
+                                 Les nappes elles-mêmes sont générées en code
+                                 (formes, vitesses et couleurs aléatoires). -->
+                            <!-- Pas de BlurEffect : un Effect WPF casse la
+                                 composition de l'acrylique DWM (et coûte cher).
+                                 La diffusion vient des dégradés radiaux
+                                 eux-mêmes, qui fondent en transparence. -->
+                            <Canvas x:Name="VuGlow" IsHitTestVisible="False" Opacity="0"/>
+                        </Border>
+                        <Grid Margin="12,10,16,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
@@ -204,16 +219,7 @@
                                     IsMoveToPointEnabled="True"
                                     ValueChanged="Volume_Changed"/>
                         </Grid>
-                        <!-- Vumètre discret : un trait de 2 px qui suit le niveau
-                             du son (reçu ou émis), visible seulement en activité. -->
-                        <Grid x:Name="VuTrack" Height="2" Margin="42,5,4,0"
-                              Visibility="Collapsed">
-                            <Border CornerRadius="1" Background="#12FFFFFF"/>
-                            <Border x:Name="VuBar" CornerRadius="1" Width="0"
-                                    Background="{StaticResource Accent}" Opacity="0.55"
-                                    HorizontalAlignment="Left"/>
-                        </Grid>
-                    </StackPanel>
+                    </Grid>
                 </Border>
                 <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
                         Margin="0,0,0,2"

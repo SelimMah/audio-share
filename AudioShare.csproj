@@ -12,7 +12,7 @@
     <RootNamespace>AudioShare</RootNamespace>
     <!-- À garder synchronisée avec MyAppVersion dans installer.iss :
          c'est elle que l'app compare à la derniere release GitHub -->
-    <Version>1.6.4</Version>
+    <Version>1.6.5</Version>
   </PropertyGroup>
 
   <ItemGroup>

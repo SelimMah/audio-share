@@ -118,6 +118,13 @@ public partial class MainWindow : Window
 
         // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
         // passe sa vie cachée, pas de réveil 20 fois par seconde pour rien.
+        // L'aurore est clippée aux coins arrondis de la carte (rayon du style
+        // Card) : un Border ne rogne pas ses enfants sur les angles, on pose
+        // la géométrie à la main à chaque changement de taille.
+        VuClip.SizeChanged += (_, _) => VuClip.Clip = new RectangleGeometry(
+            new Rect(0, 0, VuClip.ActualWidth, VuClip.ActualHeight), 14, 14);
+        CreateVuBlobs();
+
         _vuTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         _vuTimer.Tick += (_, _) => UpdateVu();
         IsVisibleChanged += (_, _) =>
@@ -408,9 +415,127 @@ public partial class MainWindow : Window
 
     // ---------- Vumètre ----------
 
+    private double _vuPhase;
+
     /// <summary>
-    /// Trait de 2 px sous le curseur : attaque immédiate, retombée douce.
-    /// Échelle en racine carrée pour rester lisible aux niveaux modérés.
+    /// Une nappe de l'aurore : une forme organique (polygone lissé en Bézier)
+    /// dont chaque point de contour ondule indépendamment, remplie d'un
+    /// dégradé radial qui s'évanouit en transparence — les couleurs se fondent
+    /// au lieu de s'empiler. Vitesses de dérive, d'ondulation et de glissement
+    /// de teinte propres à chaque nappe.
+    /// </summary>
+    private sealed class VuBlob
+    {
+        public required System.Windows.Shapes.Path Shape;
+        public required TranslateTransform Pos;
+        public required GradientStop Core, Mid, Edge;
+        public double RX, RY, SpeedX, SpeedY, PhaseX, PhaseY, Hue, HueSpeed;
+        public double[] PtFreq = [], PtPhase = [];
+    }
+
+    private const int VuPoints = 7; // points de contour par nappe
+
+    private readonly List<VuBlob> _blobs = new();
+    private readonly Random _vuRng = new();
+
+    /// <summary>
+    /// Formes, tailles, vitesses et couleurs tirées au hasard : chaque
+    /// lancement de l'app a sa propre aurore.
+    /// </summary>
+    private void CreateVuBlobs()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            // Trois arrêts : le cœur déjà doux, une mi-course encore présente,
+            // un bord totalement transparent — la nappe n'a aucun contour.
+            var core = new GradientStop(Colors.Transparent, 0);
+            var mid = new GradientStop(Colors.Transparent, 0.55);
+            var edge = new GradientStop(Colors.Transparent, 1);
+            var pos = new TranslateTransform();
+            var shape = new System.Windows.Shapes.Path
+            {
+                Fill = new RadialGradientBrush { GradientStops = { core, mid, edge } },
+                RenderTransform = pos,
+            };
+            var blob = new VuBlob
+            {
+                Shape = shape, Pos = pos, Core = core, Mid = mid, Edge = edge,
+                RX = 65 + _vuRng.NextDouble() * 55,
+                RY = 30 + _vuRng.NextDouble() * 24,
+                SpeedX = 0.30 + _vuRng.NextDouble() * 0.55,
+                SpeedY = 0.25 + _vuRng.NextDouble() * 0.50,
+                PhaseX = _vuRng.NextDouble() * Math.Tau,
+                PhaseY = _vuRng.NextDouble() * Math.Tau,
+                Hue = _vuRng.NextDouble() * 360,
+                HueSpeed = 0.25 + _vuRng.NextDouble() * 0.9,
+                // Chaque point de contour a sa fréquence et sa phase : la
+                // forme ondule sans jamais repasser par le même dessin.
+                PtFreq = Enumerable.Range(0, VuPoints)
+                    .Select(_ => 0.6 + _vuRng.NextDouble() * 1.3).ToArray(),
+                PtPhase = Enumerable.Range(0, VuPoints)
+                    .Select(_ => _vuRng.NextDouble() * Math.Tau).ToArray(),
+            };
+            VuGlow.Children.Add(shape);
+            _blobs.Add(blob);
+        }
+    }
+
+    /// <summary>
+    /// Contour organique du moment : rayon de chaque point modulé par sa
+    /// sinusoïde, puis lissage Catmull-Rom en Bézier fermées — aucune arête.
+    /// La géométrie est centrée sur l'origine, la translation place la nappe.
+    /// </summary>
+    private StreamGeometry BuildBlobGeometry(VuBlob b)
+    {
+        var pts = new System.Windows.Point[VuPoints];
+        for (int k = 0; k < VuPoints; k++)
+        {
+            double angle = k * Math.Tau / VuPoints;
+            double r = 1 + 0.34 * Math.Sin(_vuPhase * b.PtFreq[k] + b.PtPhase[k]);
+            pts[k] = new System.Windows.Point(
+                b.RX * r * Math.Cos(angle), b.RY * r * Math.Sin(angle));
+        }
+
+        var geometry = new StreamGeometry();
+        using (var gc = geometry.Open())
+        {
+            gc.BeginFigure(pts[0], isFilled: true, isClosed: true);
+            for (int k = 0; k < VuPoints; k++)
+            {
+                var p0 = pts[(k - 1 + VuPoints) % VuPoints];
+                var p1 = pts[k];
+                var p2 = pts[(k + 1) % VuPoints];
+                var p3 = pts[(k + 2) % VuPoints];
+                gc.BezierTo(
+                    new System.Windows.Point(p1.X + (p2.X - p0.X) / 6, p1.Y + (p2.Y - p0.Y) / 6),
+                    new System.Windows.Point(p2.X - (p3.X - p1.X) / 6, p2.Y - (p3.Y - p1.Y) / 6),
+                    p2, isStroked: false, isSmoothJoin: false);
+            }
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static System.Windows.Media.Color Hsv(double hue, double sat, double val)
+    {
+        double c = val * sat;
+        double x = c * (1 - Math.Abs(hue / 60 % 2 - 1));
+        double m = val - c;
+        var (r, g, b) = ((int)(hue / 60) % 6) switch
+        {
+            0 => (c, x, 0d), 1 => (x, c, 0d), 2 => (0d, c, x),
+            3 => (0d, x, c), 4 => (x, 0d, c), _ => (c, 0d, x),
+        };
+        return System.Windows.Media.Color.FromRgb(
+            (byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255));
+    }
+
+    /// <summary>
+    /// Aurore diffuse sur tout le fond de la carte volume : l'opacité respire
+    /// avec le niveau (attaque immédiate, retombée douce) ; chaque nappe
+    /// dérive en 2D, se déforme (étirement, rotation) et change lentement de
+    /// couleur, le tout d'autant plus vite que le son est fort. Rien ne se
+    /// répète jamais — abstrait, sans barres ni chiffres.
     /// </summary>
     private void UpdateVu()
     {
@@ -420,14 +545,36 @@ public partial class MainWindow : Window
         else if (PhoneAudio.IsPresent) level = PhoneAudio.Peak;
         else
         {
-            VuTrack.Visibility = Visibility.Collapsed;
+            VuGlow.Opacity = 0;
             _vuShown = 0f;
             return;
         }
 
-        VuTrack.Visibility = Visibility.Visible;
         _vuShown = Math.Max(Math.Min(1f, level), _vuShown * 0.86f);
-        VuBar.Width = VuTrack.ActualWidth * Math.Sqrt(_vuShown);
+        double vis = Math.Sqrt(_vuShown); // racine : lisible aux niveaux modérés
+        VuGlow.Opacity = vis * 0.6;
+
+        _vuPhase += 0.035 + vis * 0.12;
+        double w = VuClip.ActualWidth, h = VuClip.ActualHeight;
+
+        foreach (var b in _blobs)
+        {
+            // Dérive : le centre balaie toute la carte, en X comme en Y.
+            b.Pos.X = w * (0.5 + 0.45 * Math.Sin(_vuPhase * b.SpeedX + b.PhaseX));
+            b.Pos.Y = h * (0.5 + 0.45 * Math.Sin(_vuPhase * b.SpeedY + b.PhaseY));
+
+            // Morphing : le contour est redessiné à chaque pas, chaque point
+            // sur sa propre ondulation — la forme se transforme sans cesse.
+            b.Shape.Data = BuildBlobGeometry(b);
+
+            // La teinte glisse en continu ; le bord reste la même couleur en
+            // totalement transparent pour un fondu propre entre nappes.
+            b.Hue = (b.Hue + b.HueSpeed * (0.4 + vis)) % 360;
+            var c = Hsv(b.Hue, 0.72, 1.0);
+            b.Core.Color = System.Windows.Media.Color.FromArgb(0x96, c.R, c.G, c.B);
+            b.Mid.Color = System.Windows.Media.Color.FromArgb(0x46, c.R, c.G, c.B);
+            b.Edge.Color = System.Windows.Media.Color.FromArgb(0x00, c.R, c.G, c.B);
+        }
     }
 
     private void PollPhoneSession()
