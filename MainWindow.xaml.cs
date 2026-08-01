@@ -153,11 +153,40 @@ public partial class MainWindow : Window
         else if (BalanceRight.IsChecked == true) l = 0f;
 
         _tray.SyncBalance(l, r);
-        PhoneAudio.SetBalance(l, r);
-        _net.SetBalance(l, r);
+        AnimateBalanceTo(l, r);
 
         if (l != r && !PhoneAudio.IsPresent && !_net.IsReceiving)
             StatusText.Text = "La balance s'appliquera dès qu'un son sera reçu.";
+    }
+
+    private DispatcherTimer? _balanceAnim;
+    private float _balL = 1f, _balR = 1f;
+
+    /// <summary>
+    /// Fait glisser la balance vers la cible en ~600 ms (courbe en S) au lieu
+    /// de sauter : le son semble se déplacer d'un côté à l'autre. Les pas de
+    /// 25 ms sont assez fins pour être inaudibles individuellement.
+    /// </summary>
+    private void AnimateBalanceTo(float targetL, float targetR)
+    {
+        _balanceAnim?.Stop();
+
+        float fromL = _balL, fromR = _balR;
+        var start = DateTime.UtcNow;
+        const double durationMs = 600;
+
+        _balanceAnim = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
+        _balanceAnim.Tick += (_, _) =>
+        {
+            double p = Math.Min(1.0, (DateTime.UtcNow - start).TotalMilliseconds / durationMs);
+            float eased = (float)(p * p * (3 - 2 * p));
+            _balL = fromL + (targetL - fromL) * eased;
+            _balR = fromR + (targetR - fromR) * eased;
+            PhoneAudio.SetBalance(_balL, _balR);
+            _net.SetBalance(_balL, _balR);
+            if (p >= 1.0) _balanceAnim!.Stop();
+        };
+        _balanceAnim.Start();
     }
 
     // ---------- Flyout et zone de notification ----------
