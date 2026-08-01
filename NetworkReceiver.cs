@@ -70,6 +70,12 @@ internal sealed class NetworkReceiver : IDisposable
     /// <summary>Levé sur un thread quelconque quand un émetteur arrive ou part.</summary>
     public event Action? Changed;
 
+    /// <summary>Volume reçu de l'émetteur (contrôles partagés), pour refléter dans l'interface.</summary>
+    public event Action<float>? RemoteGain;
+
+    /// <summary>Balance reçue de l'émetteur (contrôles partagés).</summary>
+    public event Action<float, float>? RemoteBalance;
+
     public void Start()
     {
         _cts = new CancellationTokenSource();
@@ -97,10 +103,37 @@ internal sealed class NetworkReceiver : IDisposable
             while (!ct.IsCancellationRequested)
             {
                 var request = await _udp.ReceiveAsync(ct);
-                if (Encoding.UTF8.GetString(request.Buffer) != "ASHARE?") continue;
+                var text = Encoding.UTF8.GetString(request.Buffer);
 
-                var reply = Encoding.UTF8.GetBytes("ASHARE!" + Environment.MachineName);
-                await _udp.SendAsync(reply, request.RemoteEndPoint, ct);
+                if (text == "ASHARE?")
+                {
+                    var reply = Encoding.UTF8.GetBytes("ASHARE!" + Environment.MachineName);
+                    await _udp.SendAsync(reply, request.RemoteEndPoint, ct);
+                }
+                else if (text.StartsWith("ASHAREVOL "))
+                {
+                    // Contrôles partagés : l'émetteur pilote le volume du flux
+                    if (float.TryParse(text[10..], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var gain))
+                    {
+                        gain = Math.Clamp(gain, 0f, 1f);
+                        SetGain(gain);
+                        RemoteGain?.Invoke(gain);
+                    }
+                }
+                else if (text.StartsWith("ASHAREBAL "))
+                {
+                    var parts = text[10..].Split(' ');
+                    if (parts.Length == 2
+                        && float.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture, out var left)
+                        && float.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                               System.Globalization.CultureInfo.InvariantCulture, out var right))
+                    {
+                        SetBalance(Math.Clamp(left, 0f, 1f), Math.Clamp(right, 0f, 1f));
+                        RemoteBalance?.Invoke(left, right);
+                    }
+                }
             }
         }
         catch (OperationCanceledException) { }

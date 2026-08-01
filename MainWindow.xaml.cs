@@ -71,6 +71,14 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => { if (IsVisible) PlaceBottomRight(); };
 
         _net.Changed += () => Dispatcher.Invoke(UpdateNetworkUi);
+        // Contrôles partagés : l'émetteur pilote aussi notre volume/balance.
+        _net.RemoteGain += gain => Dispatcher.Invoke(() =>
+        {
+            _syncingVolume = true;
+            VolumeSlider.Value = gain;
+            _syncingVolume = false;
+        });
+        _net.RemoteBalance += (l, r) => Dispatcher.Invoke(() => SyncBalanceFromRemote(l, r));
         _net.Start();
         _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
 
@@ -193,6 +201,23 @@ public partial class MainWindow : Window
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving;
     }
 
+    /// <summary>
+    /// L'émetteur nous relaie ses réglages (contrôles partagés) : on suit son
+    /// état et on aligne les boutons quand la valeur correspond à une position
+    /// (les pas intermédiaires de son animation sont appliqués sans toucher
+    /// aux boutons).
+    /// </summary>
+    private void SyncBalanceFromRemote(float l, float r)
+    {
+        _balL = l;
+        _balR = r;
+
+        const float eps = 0.01f;
+        if (Math.Abs(l - 1f) < eps && r < eps) BalanceLeft.IsChecked = true;
+        else if (l < eps && Math.Abs(r - 1f) < eps) BalanceRight.IsChecked = true;
+        else if (Math.Abs(l - 1f) < eps && Math.Abs(r - 1f) < eps) BalanceStereo.IsChecked = true;
+    }
+
     private void SendToggle_Changed(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
@@ -206,13 +231,14 @@ public partial class MainWindow : Window
         SendStatus.Text = _sender.State;
         SendStatus.Visibility = string.IsNullOrEmpty(_sender.State)
             ? Visibility.Collapsed : Visibility.Visible;
+        VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
     }
 
     private void PollPhoneSession()
     {
         PhoneAudio.Refresh();
         bool present = PhoneAudio.IsPresent;
-        VolumeSlider.IsEnabled = present || _net.IsReceiving;
+        VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;
         if (!present) return;
 
         float volume = PhoneAudio.Volume;
@@ -226,8 +252,11 @@ public partial class MainWindow : Window
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_syncingVolume || !IsLoaded) return;
-        PhoneAudio.Volume = (float)e.NewValue;
-        _net.SetGain((float)e.NewValue);
+        float v = (float)e.NewValue;
+        PhoneAudio.Volume = v;
+        _net.SetGain(v);
+        // En émission, le curseur pilote le volume joué chez le récepteur.
+        if (_sender.IsRunning) _sender.SendVolume(v);
     }
 
     // ---------- Balance ----------
@@ -276,6 +305,9 @@ public partial class MainWindow : Window
             _balR = fromR + (targetR - fromR) * eased;
             PhoneAudio.SetBalance(_balL, _balR);
             _net.SetBalance(_balL, _balR);
+            // En émission, chaque pas de l'animation est relayé au récepteur :
+            // la balance glisse là-bas exactement comme ici.
+            if (_sender.IsRunning) _sender.SendBalance(_balL, _balR);
             if (p >= 1.0) _balanceAnim!.Stop();
         };
         _balanceAnim.Start();
