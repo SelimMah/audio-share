@@ -18,10 +18,12 @@ internal static class Updater
     /// <summary>
     /// Vrai pour l'app réellement installée par le setup, faux pour la copie
     /// de développement (bin\Debug…). Sert aussi à différencier l'icône.
+    /// Le marqueur est le désinstallateur qu'Inno Setup dépose à côté de
+    /// l'exécutable : fiable quel que soit le dossier d'installation
+    /// (par utilisateur ou Program Files en admin).
     /// </summary>
     public static bool IsInstalledCopy =>
-        AppContext.BaseDirectory.Contains(
-            Path.Combine("Programs", "Audio Share"), StringComparison.OrdinalIgnoreCase);
+        File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
 
     /// <returns>true si une mise à jour est lancée (l'app va être fermée).</returns>
     public static async Task<bool> CheckAndUpdateAsync(Action<string> notify)
