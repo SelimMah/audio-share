@@ -173,7 +173,7 @@ public partial class MainWindow : Window
 
         float fromL = _balL, fromR = _balR;
         var start = DateTime.UtcNow;
-        const double durationMs = 600;
+        const double durationMs = 800;
 
         _balanceAnim = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
         _balanceAnim.Tick += (_, _) =>
