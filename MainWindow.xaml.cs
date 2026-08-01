@@ -104,9 +104,18 @@ public partial class MainWindow : Window
 
     private void UpdateNetworkUi()
     {
-        NetworkStatus.Text = _net.IsReceiving
-            ? $"🎵 Réception du son de « {_net.SenderName} » — il est diffusé sur ce PC."
-            : "En écoute — installe Audio Share sur l'autre PC et active « Envoyer » là-bas.";
+        // État compact à droite de la ligne « Réseau local », comme le statut
+        // des appareils Bluetooth juste au-dessus.
+        if (_net.IsReceiving)
+        {
+            NetworkStatus.Text = $"🎵 {_net.SenderName}";
+            NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("Green");
+        }
+        else
+        {
+            NetworkStatus.Text = "en écoute";
+            NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("LabelTertiary");
+        }
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving;
     }
 

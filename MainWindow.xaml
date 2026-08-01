@@ -29,8 +29,8 @@
                            FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}"
                            Margin="4,0,0,0"/>
 
-                <!-- Appareils -->
-                <TextBlock Text="APPAREILS APPAIRÉS" Style="{StaticResource SectionHeader}"/>
+                <!-- Sources : téléphones Bluetooth et réseau local, une seule carte -->
+                <TextBlock Text="SOURCES" Style="{StaticResource SectionHeader}"/>
                 <Border Style="{StaticResource Card}" Padding="6">
                     <StackPanel>
                         <ListBox x:Name="DeviceList" Style="{StaticResource PlainList}"
@@ -39,13 +39,14 @@
                                 <DataTemplate>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="26"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <Border Grid.Column="0" Width="13" Height="20" CornerRadius="3"
-                                                BorderThickness="1.4" Margin="2,0,12,0"
+                                                BorderThickness="1.4" Margin="0,0,0,0"
+                                                HorizontalAlignment="Left"
                                                 BorderBrush="{StaticResource LabelSecondary}"
                                                 VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Name}"
@@ -65,34 +66,39 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <TextBlock x:Name="EmptyHint" Margin="10,10,10,12" TextWrapping="Wrap"
+                        <TextBlock x:Name="EmptyHint" Margin="10,9,10,9" TextWrapping="Wrap"
                                    FontFamily="{StaticResource Body}" FontSize="12.5"
                                    Foreground="{StaticResource LabelSecondary}"
                                    Visibility="Collapsed"
-                                   Text="Aucun appareil. Appaire ton téléphone via le lien ci-dessous, il apparaîtra ici."/>
-                    </StackPanel>
-                </Border>
+                                   Text="Aucun téléphone appairé — utilise le lien ci-dessous."/>
 
-                <TextBlock Margin="0,10,0,0" HorizontalAlignment="Center">
-                    <Hyperlink Click="OpenSettings_Click" TextDecorations="None"
-                               Foreground="{StaticResource Accent}">
-                        <Run Text="Ouvrir l'appairage Bluetooth" FontFamily="Segoe UI Variable Text"
-                             FontSize="12.5"/>
-                    </Hyperlink>
-                </TextBlock>
+                        <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
 
-                <!-- Réseau local : réception (toujours active) et émission -->
-                <TextBlock Text="RÉSEAU" Style="{StaticResource SectionHeader}"/>
-                <Border Style="{StaticResource Card}" Padding="16,12">
-                    <StackPanel>
-                        <TextBlock x:Name="NetworkStatus" TextWrapping="Wrap"
-                                   FontFamily="{StaticResource Body}" FontSize="12.5"
-                                   Foreground="{StaticResource LabelSecondary}" LineHeight="17"
-                                   Text="En écoute — installe Audio Share sur l'autre PC et active « Envoyer » là-bas."/>
+                        <!-- Réception réseau : toujours active, état à droite -->
+                        <Grid Margin="10,8"
+                              ToolTip="Un autre PC avec Audio Share peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="26"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="&#xE701;" FontSize="15"
+                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       Foreground="{StaticResource LabelSecondary}"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="Réseau local"
+                                       FontFamily="{StaticResource Body}" FontSize="14"
+                                       Foreground="{StaticResource Label}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" x:Name="NetworkStatus"
+                                       FontFamily="{StaticResource Body}" FontSize="12"
+                                       Foreground="{StaticResource LabelTertiary}"
+                                       VerticalAlignment="Center" Text="en écoute"/>
+                        </Grid>
 
-                        <Border Height="1" Background="{StaticResource Separator}" Margin="0,11,0,0"/>
+                        <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
 
-                        <Grid Height="44">
+                        <!-- Émission vers un autre PC -->
+                        <Grid Margin="10,5" Height="34">
                             <TextBlock Text="Envoyer le son de ce PC" Style="{StaticResource RowLabel}"/>
                             <CheckBox x:Name="SendToggle" Style="{StaticResource Switch}"
                                       HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -102,9 +108,17 @@
                         <TextBlock x:Name="SendStatus" TextWrapping="Wrap" Visibility="Collapsed"
                                    FontFamily="{StaticResource Body}" FontSize="12"
                                    Foreground="{StaticResource LabelTertiary}" LineHeight="16"
-                                   Margin="0,0,0,4"/>
+                                   Margin="10,0,10,8"/>
                     </StackPanel>
                 </Border>
+
+                <TextBlock Margin="0,9,0,0" HorizontalAlignment="Center">
+                    <Hyperlink Click="OpenSettings_Click" TextDecorations="None"
+                               Foreground="{StaticResource Accent}">
+                        <Run Text="Ouvrir l'appairage Bluetooth" FontFamily="Segoe UI Variable Text"
+                             FontSize="12.5"/>
+                    </Hyperlink>
+                </TextBlock>
 
                 <!-- Volume et balance du son reçu (Bluetooth ou réseau) -->
                 <TextBlock Text="SON REÇU" Style="{StaticResource SectionHeader}"/>
