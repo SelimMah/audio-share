@@ -10,3 +10,6 @@ installer/
 # Divers
 *.log
 *.user
+
+# Notes de travail locales pour Claude
+CLAUDE.md
