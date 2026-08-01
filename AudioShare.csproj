@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AudioShare</AssemblyName>
+    <RootNamespace>AudioShare</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
+  </ItemGroup>
+
+  <!-- L'émetteur est un projet séparé : ne pas compiler ses fichiers ici -->
+  <ItemGroup>
+    <Compile Remove="Sender\**;Emetteur\**" />
+    <Page Remove="Sender\**;Emetteur\**" />
+    <ApplicationDefinition Remove="Sender\**;Emetteur\**" />
+    <None Remove="Sender\**;Emetteur\**" />
+  </ItemGroup>
+
+</Project>

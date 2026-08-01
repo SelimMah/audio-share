@@ -1,0 +1,12 @@
+# Sorties de compilation
+bin/
+obj/
+publish/
+
+# Exécutables publiés (trop lourds pour git — voir les Releases GitHub)
+Emetteur/
+installer/
+
+# Divers
+*.log
+*.user
