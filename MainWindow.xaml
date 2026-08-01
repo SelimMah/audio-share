@@ -25,9 +25,45 @@
         </Grid.RenderTransform>
             <StackPanel Margin="20,18,20,20">
 
-                <TextBlock Text="Audio Share" FontFamily="{StaticResource Display}"
-                           FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}"
-                           Margin="4,0,0,0"/>
+                <Grid>
+                    <TextBlock Text="Audio Share" FontFamily="{StaticResource Display}"
+                               FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}"
+                               Margin="4,0,0,0"/>
+                    <Button x:Name="SettingsButton" Content="&#xE713;" Width="32" Height="32"
+                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
+                            Style="{StaticResource ChromeButton}"
+                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Click="Settings_Click" ToolTip="Réglages"/>
+                </Grid>
+
+                <!-- Réglages, dépliés par l'engrenage -->
+                <StackPanel x:Name="SettingsPanel" Visibility="Collapsed">
+                    <TextBlock Text="RÉGLAGES" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource Card}" Padding="16,4">
+                        <StackPanel>
+                            <Grid Height="44">
+                                <TextBlock Text="Ouvrir au démarrage de Windows"
+                                           Style="{StaticResource RowLabel}"/>
+                                <CheckBox x:Name="AutostartToggle" Style="{StaticResource Switch}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
+                            </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}"/>
+                            <Grid Height="44">
+                                <TextBlock Text="Mise à jour" Style="{StaticResource RowLabel}"/>
+                                <Button x:Name="CheckUpdateButton" Content="Vérifier"
+                                        Width="94" Height="30" FontSize="12.5"
+                                        Style="{StaticResource TintedButton}"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Click="CheckUpdate_Click"/>
+                            </Grid>
+                            <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap"
+                                       FontFamily="{StaticResource Body}" FontSize="12"
+                                       Foreground="{StaticResource LabelTertiary}" LineHeight="16"
+                                       Margin="0,0,0,10"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
                 <!-- Sources : téléphones Bluetooth et réseau local, une seule carte -->
                 <TextBlock Text="SOURCES" Style="{StaticResource SectionHeader}"/>

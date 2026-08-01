@@ -25,8 +25,20 @@ internal static class Updater
     public static bool IsInstalledCopy =>
         File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
 
+    /// <summary>Version courante en trois chiffres, pour l'affichage.</summary>
+    public static string CurrentVersion
+    {
+        get
+        {
+            var v = typeof(Updater).Assembly.GetName().Version ?? new Version(0, 0, 0);
+            return $"{v.Major}.{v.Minor}.{v.Build}";
+        }
+    }
+
+    /// <param name="verbose">Vérification demandée par l'utilisateur : rendre
+    /// compte de chaque issue, y compris « déjà à jour » et les erreurs.</param>
     /// <returns>true si une mise à jour est lancée (l'app va être fermée).</returns>
-    public static async Task<bool> CheckAndUpdateAsync(Action<string> notify)
+    public static async Task<bool> CheckAndUpdateAsync(Action<string> notify, bool verbose = false)
     {
         try
         {
@@ -35,8 +47,11 @@ internal static class Updater
             if (!IsInstalledCopy)
             {
                 Log.Write("MàJ : copie de développement, vérification ignorée");
+                if (verbose) notify("Copie de développement — mise à jour désactivée.");
                 return false;
             }
+
+            if (verbose) notify("Vérification…");
 
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("AudioShare-Updater");
@@ -51,6 +66,7 @@ internal static class Updater
             if (latest <= current)
             {
                 Log.Write($"MàJ : à jour (installée {current}, dernière {latest})");
+                if (verbose) notify($"L'app est à jour (version {CurrentVersion}).");
                 return false;
             }
 
@@ -67,6 +83,7 @@ internal static class Updater
             if (url == null)
             {
                 Log.Write($"MàJ : release {latest} sans installateur, ignorée");
+                if (verbose) notify("La dernière release ne contient pas d'installateur.");
                 return false;
             }
 
@@ -92,6 +109,7 @@ internal static class Updater
         {
             // Hors ligne, API indisponible… : l'app démarre normalement.
             Log.Write($"MàJ : vérification impossible ({ex.Message})");
+            if (verbose) notify("Vérification impossible — regarde ta connexion.");
             return false;
         }
     }

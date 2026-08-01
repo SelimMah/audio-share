@@ -100,6 +100,66 @@ public partial class MainWindow : Window
         WindowEffects.Apply(this);
     }
 
+    // ---------- Réglages ----------
+
+    private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string RunValueName = "AudioShare"; // même nom que l'installateur
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        bool opening = SettingsPanel.Visibility != Visibility.Visible;
+        if (opening)
+        {
+            AutostartToggle.IsChecked = IsAutostartEnabled();
+            UpdateStatus.Text = $"Version installée : {Updater.CurrentVersion}";
+        }
+        SettingsPanel.Visibility = opening ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool IsAutostartEnabled()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath);
+        return key?.GetValue(RunValueName) != null;
+    }
+
+    private void Autostart_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunKeyPath);
+            if (AutostartToggle.IsChecked == true)
+            {
+                string exe = Environment.ProcessPath
+                    ?? System.IO.Path.Combine(AppContext.BaseDirectory, "AudioShare.exe");
+                key.SetValue(RunValueName, $"\"{exe}\"");
+            }
+            else
+            {
+                key.DeleteValue(RunValueName, throwOnMissingValue: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Impossible de modifier le démarrage automatique : {ex.Message}";
+        }
+    }
+
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        try
+        {
+            await Updater.CheckAndUpdateAsync(
+                msg => Dispatcher.Invoke(() => UpdateStatus.Text = msg),
+                verbose: true);
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
     // ---------- Session du téléphone ----------
 
     private void UpdateNetworkUi()
