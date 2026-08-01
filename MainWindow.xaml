@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Audio Share"
-        Width="400" Height="640"
+        Width="400" Height="712"
         WindowStyle="None" AllowsTransparency="False"
         Background="Transparent"
         TextOptions.TextFormattingMode="Ideal"
@@ -86,13 +86,29 @@
                     </Hyperlink>
                 </TextBlock>
 
-                <!-- Réception par le réseau local (autre PC) -->
-                <TextBlock Text="RÉCEPTION RÉSEAU" Style="{StaticResource SectionHeader}"/>
+                <!-- Réseau local : réception (toujours active) et émission -->
+                <TextBlock Text="RÉSEAU" Style="{StaticResource SectionHeader}"/>
                 <Border Style="{StaticResource Card}" Padding="16,12">
-                    <TextBlock x:Name="NetworkStatus" TextWrapping="Wrap"
-                               FontFamily="{StaticResource Body}" FontSize="12.5"
-                               Foreground="{StaticResource LabelSecondary}" LineHeight="17"
-                               Text="En écoute sur le réseau local — lance « AudioShare-Emetteur » sur l'autre PC."/>
+                    <StackPanel>
+                        <TextBlock x:Name="NetworkStatus" TextWrapping="Wrap"
+                                   FontFamily="{StaticResource Body}" FontSize="12.5"
+                                   Foreground="{StaticResource LabelSecondary}" LineHeight="17"
+                                   Text="En écoute — installe Audio Share sur l'autre PC et active « Envoyer » là-bas."/>
+
+                        <Border Height="1" Background="{StaticResource Separator}" Margin="0,11,0,0"/>
+
+                        <Grid Height="44">
+                            <TextBlock Text="Envoyer le son de ce PC" Style="{StaticResource RowLabel}"/>
+                            <CheckBox x:Name="SendToggle" Style="{StaticResource Switch}"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      Checked="SendToggle_Changed" Unchecked="SendToggle_Changed"/>
+                        </Grid>
+
+                        <TextBlock x:Name="SendStatus" TextWrapping="Wrap" Visibility="Collapsed"
+                                   FontFamily="{StaticResource Body}" FontSize="12"
+                                   Foreground="{StaticResource LabelTertiary}" LineHeight="16"
+                                   Margin="0,0,0,4"/>
+                    </StackPanel>
                 </Border>
 
                 <!-- Volume et balance du son reçu (Bluetooth ou réseau) -->

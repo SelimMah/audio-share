@@ -10,9 +10,11 @@ locaux du PC.
 - **Récepteur Bluetooth (A2DP Sink)** via l'API `AudioPlaybackConnection` de
   Windows : appaire ton téléphone, clique dessus dans la liste, connecte-toi
   depuis le téléphone — sa musique sort sur le PC.
-- **Récepteur réseau** : l'émetteur fourni (`Sender/`) capture tout le son d'un
-  autre PC Windows et le diffuse ici en PCM 48 kHz par le réseau local, avec
-  découverte automatique (UDP) — aucun réglage d'IP.
+- **Réseau local, dans les deux sens** : chaque instance d'Audio Share écoute
+  en permanence, et un interrupteur « Envoyer le son de ce PC » capture tout le
+  son local et le diffuse en PCM 48 kHz vers l'autre PC, avec découverte
+  automatique (UDP) — aucun réglage d'IP. Installe simplement l'app sur les
+  deux machines.
 - **Balance gauche/droite et volume du flux reçu uniquement**, via le volume
   par canal de la session audio (`IChannelAudioVolume`) pour le Bluetooth, et
   par traitement direct des échantillons pour le réseau.
@@ -35,19 +37,14 @@ dotnet build AudioShare.csproj
 dotnet run --project AudioShare.csproj
 ```
 
-L'émetteur réseau (à lancer sur le PC dont on veut envoyer le son) :
-
-```powershell
-dotnet publish Sender/AudioShareSender.csproj -c Release -r win-x64 `
-  --self-contained true -p:PublishSingleFile=true -o Emetteur
-```
-
 ## Installateur
 
 Le script [installer.iss](installer.iss) (Inno Setup 6) produit
 `AudioShare-Setup.exe` : installation par utilisateur (sans droits admin),
 raccourcis Menu Démarrer/Bureau, lancement au démarrage optionnel,
-désinstallateur.
+désinstallateur. Relancer l'installateur sur une machine où l'app existe déjà
+**met à jour en place** : l'instance en cours est fermée automatiquement et
+remplacée, sans doublon.
 
 ```powershell
 dotnet publish AudioShare.csproj -c Release -r win-x64 --self-contained true `

@@ -2,7 +2,7 @@
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
 #define MyAppName "Audio Share"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppExeName "AudioShare.exe"
 
 [Setup]
@@ -45,3 +45,17 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
     Flags: nowait postinstall skipifsilent
+
+[Code]
+// Mise à jour : l'app vit dans la zone de notification sans fenêtre visible,
+// on la ferme d'office avant de remplacer ses fichiers. Grâce à l'AppId
+// identique, réinstaller par-dessus une version existante met simplement à
+// jour en place (même dossier, même entrée de désinstallation).
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssInstall then
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im {#MyAppExeName}', '',
+         SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;

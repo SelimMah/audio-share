@@ -2,32 +2,46 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Windows;
-using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
-namespace AudioShareSender;
+namespace AudioShare;
 
 /// <summary>
-/// Émetteur : capture tout le son de ce PC (boucle WASAPI sur la sortie par
-/// défaut), le convertit en PCM 16 bits et l'envoie au récepteur Audio Share
-/// découvert sur le réseau local. Se reconnecte tout seul en cas de coupure.
+/// Émission : capture tout le son de ce PC (boucle WASAPI sur la sortie par
+/// défaut), le convertit en PCM 16 bits et l'envoie à un autre Audio Share
+/// découvert sur le réseau local. Se reconnecte tout seul en cas de coupure ;
+/// ignore sa propre machine pour ne jamais se diffuser à soi-même.
 /// </summary>
-public partial class MainWindow : Window
+internal sealed class NetworkSender : IDisposable
 {
-    private const int DiscoveryPort = 42501;
-    private const int StreamPort = 42502;
+    private CancellationTokenSource? _cts;
+    private volatile string _state = "";
 
-    private readonly CancellationTokenSource _cts = new();
+    public bool IsRunning => _cts is { IsCancellationRequested: false };
+    public string State => _state;
 
-    public MainWindow()
+    /// <summary>Levé sur un thread quelconque à chaque changement d'état.</summary>
+    public event Action? Changed;
+
+    public void Start()
     {
-        InitializeComponent();
-        Loaded += (_, _) => _ = RunAsync(_cts.Token);
-        Closed += (_, _) => _cts.Cancel();
+        Stop();
+        _cts = new CancellationTokenSource();
+        _ = Task.Run(() => RunAsync(_cts.Token));
     }
 
-    private void Status(string text) => Dispatcher.Invoke(() => StatusText.Text = text);
+    public void Stop()
+    {
+        _cts?.Cancel();
+        _cts = null;
+        SetState("");
+    }
+
+    private void SetState(string state)
+    {
+        _state = state;
+        Changed?.Invoke();
+    }
 
     private async Task RunAsync(CancellationToken ct)
     {
@@ -35,15 +49,15 @@ public partial class MainWindow : Window
         {
             try
             {
-                Status("🔍 Recherche d'Audio Share sur le réseau…");
+                SetState("🔍 Recherche d'un récepteur Audio Share sur le réseau…");
                 var (address, name) = await DiscoverAsync(ct);
-                Status($"Récepteur trouvé : « {name} ». Connexion…");
+                SetState($"Récepteur trouvé : « {name} ». Connexion…");
                 await StreamAsync(address, name, ct);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
             {
-                Status($"Diffusion interrompue ({ex.Message}). Nouvel essai…");
+                SetState($"Diffusion interrompue ({ex.Message}) — nouvel essai…");
                 try { await Task.Delay(2000, ct); } catch { return; }
             }
         }
@@ -57,16 +71,25 @@ public partial class MainWindow : Window
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            await udp.SendAsync(probe, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort), ct);
+            await udp.SendAsync(probe, new IPEndPoint(IPAddress.Broadcast, NetworkReceiver.DiscoveryPort), ct);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(2000);
             try
             {
-                var reply = await udp.ReceiveAsync(timeout.Token);
-                var text = Encoding.UTF8.GetString(reply.Buffer);
-                if (text.StartsWith("ASHARE!"))
-                    return (reply.RemoteEndPoint.Address, text[7..]);
+                while (true)
+                {
+                    var reply = await udp.ReceiveAsync(timeout.Token);
+                    var text = Encoding.UTF8.GetString(reply.Buffer);
+                    if (!text.StartsWith("ASHARE!")) continue;
+
+                    var name = text[7..];
+                    // Notre propre récepteur répond aussi à la sonde : l'ignorer.
+                    if (string.Equals(name, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    return (reply.RemoteEndPoint.Address, name);
+                }
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -78,7 +101,7 @@ public partial class MainWindow : Window
     private async Task StreamAsync(IPAddress address, string receiverName, CancellationToken ct)
     {
         using var client = new TcpClient();
-        await client.ConnectAsync(address, StreamPort, ct);
+        await client.ConnectAsync(address, NetworkReceiver.StreamPort, ct);
         client.NoDelay = true;
         var net = client.GetStream();
 
@@ -129,7 +152,7 @@ public partial class MainWindow : Window
         capture.RecordingStopped += (_, _) => done.TrySetResult();
 
         capture.StartRecording();
-        Status($"🎵 Diffusion du son de ce PC vers « {receiverName} »");
+        SetState($"🎵 Diffusion du son de ce PC vers « {receiverName} »");
 
         await using (ct.Register(() =>
         {
@@ -141,4 +164,6 @@ public partial class MainWindow : Window
         }
         throw new IOException("le flux s'est arrêté");
     }
+
+    public void Dispose() => Stop();
 }

@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<BtDevice> _devices = new();
     private readonly Dictionary<string, AudioPlaybackConnection> _connections = new();
     private readonly NetworkReceiver _net = new();
+    private readonly NetworkSender _sender = new();
     private readonly TrayIcon _tray = new();
     private DeviceWatcher? _watcher;
     private DispatcherTimer? _retryTimer;
@@ -67,6 +68,7 @@ public partial class MainWindow : Window
 
         _net.Changed += () => Dispatcher.Invoke(UpdateNetworkUi);
         _net.Start();
+        _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
 
         StartWatcher();
 
@@ -95,8 +97,23 @@ public partial class MainWindow : Window
     {
         NetworkStatus.Text = _net.IsReceiving
             ? $"🎵 Réception du son de « {_net.SenderName} » — il est diffusé sur ce PC."
-            : "En écoute sur le réseau local — lance « AudioShare-Emetteur » sur l'autre PC.";
+            : "En écoute — installe Audio Share sur l'autre PC et active « Envoyer » là-bas.";
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving;
+    }
+
+    private void SendToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        if (SendToggle.IsChecked == true) _sender.Start();
+        else _sender.Stop();
+        UpdateSendUi();
+    }
+
+    private void UpdateSendUi()
+    {
+        SendStatus.Text = _sender.State;
+        SendStatus.Visibility = string.IsNullOrEmpty(_sender.State)
+            ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void PollPhoneSession()
@@ -411,6 +428,7 @@ public partial class MainWindow : Window
         foreach (var c in _connections.Values) c.Dispose();
         _connections.Clear();
         _net.Dispose();
+        _sender.Dispose();
         _tray.Dispose();
         base.OnClosed(e);
         System.Windows.Application.Current.Shutdown();
