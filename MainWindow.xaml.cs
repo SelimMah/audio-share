@@ -66,6 +66,10 @@ public partial class MainWindow : Window
         Deactivated += (_, _) => { if (IsVisible && !_quitting) HideFlyout(); };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) HideFlyout(); };
 
+        // La hauteur suit le contenu : rester ancré en bas à droite quand
+        // il change (statut d'émission qui apparaît, appareil ajouté…).
+        SizeChanged += (_, _) => { if (IsVisible) PlaceBottomRight(); };
+
         _net.Changed += () => Dispatcher.Invoke(UpdateNetworkUi);
         _net.Start();
         _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
@@ -200,9 +204,12 @@ public partial class MainWindow : Window
 
     private void PlaceBottomRight()
     {
+        // La hauteur suit le contenu (SizeToContent) : Height reste NaN,
+        // c'est ActualHeight qui fait foi une fois la mise en page calculée.
         var area = SystemParameters.WorkArea;
+        double height = ActualHeight > 1 ? ActualHeight : 560;
         Left = area.Right - Width - 12;
-        Top = area.Bottom - Height - 12;
+        Top = area.Bottom - height - 12;
     }
 
     private void ToggleFlyout()

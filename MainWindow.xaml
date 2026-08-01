@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Audio Share"
-        Width="400" Height="712"
+        Width="400" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="False"
         Background="Transparent"
         TextOptions.TextFormattingMode="Ideal"
@@ -23,16 +23,11 @@
         <Grid.RenderTransform>
             <TranslateTransform x:Name="RootSlide"/>
         </Grid.RenderTransform>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,20,0,24">
-            <StackPanel Margin="20,0,20,0">
+            <StackPanel Margin="20,18,20,20">
 
                 <TextBlock Text="Audio Share" FontFamily="{StaticResource Display}"
-                           FontSize="30" FontWeight="Bold" Foreground="{StaticResource Label}"
-                           Margin="4,0,0,2"/>
-                <TextBlock Text="Ton PC devient une enceinte Bluetooth"
-                           FontFamily="{StaticResource Body}" FontSize="13"
-                           Foreground="{StaticResource LabelSecondary}" Margin="4,0,0,0"
-                           TextWrapping="Wrap"/>
+                           FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}"
+                           Margin="4,0,0,0"/>
 
                 <!-- Appareils -->
                 <TextBlock Text="APPAREILS APPAIRÉS" Style="{StaticResource SectionHeader}"/>
@@ -133,7 +128,8 @@
                                    VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </Grid>
                 </Border>
-                <Border CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34">
+                <Border CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
+                        ToolTip="N'agit que sur le son reçu (téléphone ou autre PC) — jamais sur les sons de ce PC.">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -152,16 +148,10 @@
                     </Grid>
                 </Border>
 
-                <TextBlock x:Name="BalanceNote" Margin="4,10,4,0" TextWrapping="Wrap"
+                <TextBlock x:Name="StatusText" Margin="4,12,4,0" TextWrapping="Wrap"
                            FontFamily="{StaticResource Body}" FontSize="12"
-                           Foreground="{StaticResource LabelTertiary}" LineHeight="17"
-                           Text="Le volume et la balance n'agissent que sur le son reçu (téléphone ou autre PC) — jamais sur les sons de ce PC."/>
-
-                <TextBlock x:Name="StatusText" Margin="4,18,4,0" TextWrapping="Wrap"
-                           FontFamily="{StaticResource Body}" FontSize="12.5"
-                           Foreground="{StaticResource LabelSecondary}" LineHeight="18"
-                           Text="Clique sur ton téléphone dans la liste pour activer la réception."/>
+                           Foreground="{StaticResource LabelTertiary}" LineHeight="16"
+                           Text="Clique sur un appareil pour activer la réception."/>
             </StackPanel>
-        </ScrollViewer>
     </Grid>
 </Window>
