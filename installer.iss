@@ -1,9 +1,22 @@
-﻿; Installateur Audio Share — Inno Setup 6
+; Installateur Audio Share — Inno Setup 6
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
 #define MyAppName "Audio Share"
-#define MyAppVersion "1.6.6"
+#define MyAppVersion "1.6.7"
 #define MyAppExeName "AudioShare.exe"
+
+; Garde-fou : compiler depuis un dossier publish\ périmé produit un
+; installateur étiqueté neuf mais contenant l'ancienne app — l'auto-update
+; boucle alors à l'infini (arrivé en v1.6.6). On refuse de compiler si
+; l'exécutable publié n'est pas exactement à la version annoncée.
+#define PublishedVersion GetVersionNumbersString("publish\" + MyAppExeName)
+#if PublishedVersion == ""
+  #error publish\AudioShare.exe introuvable : lancer dotnet publish avant iscc
+#endif
+#if PublishedVersion != MyAppVersion + ".0"
+  #pragma message "publish = " + PublishedVersion + ", attendu = " + MyAppVersion + ".0"
+  #error Version de publish\AudioShare.exe differente de MyAppVersion : relancer dotnet publish
+#endif
 
 [Setup]
 AppId={{7C1E9A4D-52B8-4F63-9A0E-3B2D71C55A10}

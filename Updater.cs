@@ -67,8 +67,22 @@ internal static class Updater
             if (latest <= current)
             {
                 Log.Write($"MàJ : à jour (installée {current}, dernière {latest})");
+                Prefs.ClearUpdateAttempts();
                 if (verbose) notify(Loc.T($"The app is up to date (version {CurrentVersion}).",
                                           $"L'app est à jour (version {CurrentVersion})."));
+                return false;
+            }
+
+            // Garde anti-boucle : une release dont l'installateur n'apporte pas
+            // la version annoncée relancerait la mise à jour à chaque
+            // démarrage, indéfiniment. Après deux tentatives sans effet, on
+            // renonce (le journal, visible dans Diagnostic, l'explique). Une
+            // vérification manuelle réessaie toujours.
+            int attempts = Prefs.UpdateAttemptsFor(latest.ToString());
+            if (attempts >= 2 && !verbose)
+            {
+                Log.Write($"MàJ : {latest} déjà tentée {attempts} fois sans effet "
+                          + $"(toujours en {current}) — abandon, installateur incohérent ?");
                 return false;
             }
 
@@ -101,7 +115,8 @@ internal static class Updater
 
             notify(Loc.T("Installing the update — the app will restart.",
                          "Installation de la mise à jour — l'app va redémarrer."));
-            Log.Write("MàJ : lancement de l'installateur silencieux");
+            Log.Write($"MàJ : lancement de l'installateur silencieux (tentative {attempts + 1})");
+            Prefs.RecordUpdateAttempt(latest.ToString());
 
             // L'installateur ferme l'app (taskkill), installe, puis la relance.
             Process.Start(new ProcessStartInfo(setupPath, "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART")

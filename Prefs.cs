@@ -53,6 +53,34 @@ internal static class Prefs
         set => SetString(TargetValue, value);
     }
 
+    // ---------- Garde anti-boucle de mise à jour ----------
+    // Si l'installateur d'une release n'apporte pas la version qu'elle
+    // annonce (asset erroné publié par erreur — arrivé en v1.6.6), l'app se
+    // met à jour, redémarre, se retrouve sur l'ancienne version, recommence…
+    // sans fin. On compte les tentatives par version cible pour s'arrêter.
+
+    private const string UpdateTargetValue = "UpdateTarget";
+    private const string UpdateCountValue = "UpdateAttempts";
+
+    /// <summary>Tentatives déjà faites vers cette version (0 si autre cible).</summary>
+    public static int UpdateAttemptsFor(string version) =>
+        GetString(UpdateTargetValue) == version
+        && int.TryParse(GetString(UpdateCountValue), out var n) ? n : 0;
+
+    public static void RecordUpdateAttempt(string version)
+    {
+        int n = UpdateAttemptsFor(version);
+        SetString(UpdateTargetValue, version);
+        SetString(UpdateCountValue, (n + 1).ToString());
+    }
+
+    /// <summary>Appelé dès que l'app est à jour : le compteur repart de zéro.</summary>
+    public static void ClearUpdateAttempts()
+    {
+        SetString(UpdateTargetValue, null);
+        SetString(UpdateCountValue, null);
+    }
+
     /// <summary>
     /// Sortie du son reçu par le réseau : ID MMDevice, ou null pour la sortie
     /// par défaut. Le son Bluetooth du téléphone, lui, est rendu par Windows
