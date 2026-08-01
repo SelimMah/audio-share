@@ -41,7 +41,7 @@ internal sealed class TrayIcon : IDisposable
 
         _icon = new NotifyIcon
         {
-            Text = "Audio Share",
+            Text = Dev ? "Audio Share (développement)" : "Audio Share",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -81,25 +81,40 @@ internal sealed class TrayIcon : IDisposable
         _icon.ShowBalloonTip(3000);
     }
 
+    /// <summary>Copie de développement : icône orange avec pastille, pour ne
+    /// jamais la confondre avec l'app installée (bleue).</summary>
+    private static readonly bool Dev = !Updater.IsInstalledCopy;
+
     /// <summary>
     /// Dessine l'icône en 64×64 (Windows la réduit proprement) : une pastille
     /// dégradée avec un téléphone qui émet des ondes — volontairement distincte
-    /// du haut-parleur blanc de Windows.
+    /// du haut-parleur blanc de Windows. Bleu/violet pour l'app installée,
+    /// orange/rose pour la copie de développement.
     /// </summary>
     private static Icon Draw(bool active)
     {
+        Color c1, c2, detailColor;
+        if (active)
+        {
+            c1 = Dev ? Color.FromArgb(255, 159, 10) : Color.FromArgb(10, 132, 255);
+            c2 = Dev ? Color.FromArgb(255, 55, 95) : Color.FromArgb(191, 90, 242);
+            detailColor = Dev ? Color.FromArgb(250, 120, 40) : Color.FromArgb(60, 110, 250);
+        }
+        else
+        {
+            c1 = Color.FromArgb(128, 128, 134);
+            c2 = Color.FromArgb(70, 70, 74);
+            detailColor = Color.FromArgb(100, 100, 106);
+        }
+
         using var bmp = new Bitmap(64, 64);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
 
-            // Pastille de fond : bleu -> violet quand actif, gris sinon
             var rect = new Rectangle(2, 2, 60, 60);
-            using var bg = new LinearGradientBrush(rect,
-                active ? Color.FromArgb(10, 132, 255) : Color.FromArgb(128, 128, 134),
-                active ? Color.FromArgb(191, 90, 242) : Color.FromArgb(70, 70, 74),
-                55f);
+            using var bg = new LinearGradientBrush(rect, c1, c2, 55f);
             g.FillEllipse(bg, rect);
 
             // Téléphone blanc, bords arrondis
@@ -107,7 +122,7 @@ internal sealed class TrayIcon : IDisposable
             g.FillPath(Brushes.White, phone);
 
             // Écouteur et bouton, dans la couleur du fond pour le relief
-            using var detail = new SolidBrush(active ? Color.FromArgb(60, 110, 250) : Color.FromArgb(100, 100, 106));
+            using var detail = new SolidBrush(detailColor);
             g.FillEllipse(detail, 21.5f, 20.5f, 4f, 1.8f);
             g.FillEllipse(detail, 21.7f, 41.5f, 3.6f, 3.6f);
 
@@ -115,6 +130,15 @@ internal sealed class TrayIcon : IDisposable
             using var wave = new Pen(Color.White, 3.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
             g.DrawArc(wave, 32f, 25f, 10f, 14f, -52, 104);
             g.DrawArc(wave, 36f, 19f, 19f, 26f, -52, 104);
+
+            // Pastille « dev » en bas à droite, lisible même en 16×16
+            if (Dev)
+            {
+                using var badge = new SolidBrush(Color.FromArgb(255, 159, 10));
+                g.FillEllipse(badge, 42f, 42f, 19f, 19f);
+                using var ring = new Pen(Color.White, 3f);
+                g.DrawEllipse(ring, 42f, 42f, 19f, 19f);
+            }
         }
         return Icon.FromHandle(bmp.GetHicon());
     }

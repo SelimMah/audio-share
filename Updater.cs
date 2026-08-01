@@ -15,6 +15,14 @@ internal static class Updater
 {
     private const string ApiUrl = "https://api.github.com/repos/SelimMah/audio-share/releases/latest";
 
+    /// <summary>
+    /// Vrai pour l'app réellement installée par le setup, faux pour la copie
+    /// de développement (bin\Debug…). Sert aussi à différencier l'icône.
+    /// </summary>
+    public static bool IsInstalledCopy =>
+        AppContext.BaseDirectory.Contains(
+            Path.Combine("Programs", "Audio Share"), StringComparison.OrdinalIgnoreCase);
+
     /// <returns>true si une mise à jour est lancée (l'app va être fermée).</returns>
     public static async Task<bool> CheckAndUpdateAsync(Action<string> notify)
     {
@@ -22,8 +30,7 @@ internal static class Updater
         {
             // La copie de développement (bin\Debug…) ne doit pas s'auto-écraser :
             // seule l'app réellement installée se met à jour.
-            if (!AppContext.BaseDirectory.Contains(
-                    Path.Combine("Programs", "Audio Share"), StringComparison.OrdinalIgnoreCase))
+            if (!IsInstalledCopy)
             {
                 Log.Write("MàJ : copie de développement, vérification ignorée");
                 return false;
