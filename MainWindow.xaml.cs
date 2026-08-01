@@ -162,8 +162,22 @@ public partial class MainWindow : Window
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "AudioShare"; // même nom que l'installateur
 
-    private void Settings_Click(object sender, RoutedEventArgs e) =>
-        ShowSettingsView(SettingsPanel.Visibility != Visibility.Visible);
+    private enum AppPage { Main, Settings, Diag }
+    private AppPage _page = AppPage.Main;
+
+    /// <summary>Bouton en haut à droite : engrenage, croix ou retour selon la page.</summary>
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        switch (_page)
+        {
+            case AppPage.Main: NavigateTo(AppPage.Settings, forward: true); break;
+            case AppPage.Settings: NavigateTo(AppPage.Main, forward: false); break;
+            case AppPage.Diag: NavigateTo(AppPage.Settings, forward: false); break;
+        }
+    }
+
+    private void DiagNav_Click(object sender, RoutedEventArgs e) =>
+        NavigateTo(AppPage.Diag, forward: true);
 
     /// <summary>
     /// Applique la langue à tous les textes fixes ; les textes d'état
@@ -185,7 +199,25 @@ public partial class MainWindow : Window
         OutputRow.ToolTip = Loc.T(
             "Applies to audio received from the network. Bluetooth phone audio always follows Windows' default output.",
             "S'applique au son reçu par le réseau. Le son Bluetooth du téléphone suit toujours la sortie par défaut de Windows.");
-        if (SettingsPanel.Visibility == Visibility.Visible) PopulateOutputCombo();
+        NetworkHeader.Text = Loc.T("NETWORK", "RÉSEAU");
+        DestLabel.Text = Loc.T("Send to", "Envoyer vers");
+        DestRow.ToolTip = Loc.T(
+            "Which Audio Share receives this PC's audio. Automatic = the first one found.",
+            "Quel Audio Share reçoit le son de ce PC. Automatique = le premier découvert.");
+        OpusLabel.Text = Loc.T("Opus compression (Wi-Fi)", "Compression Opus (Wi-Fi)");
+        OpusRow.ToolTip = Loc.T(
+            "Compresses the sent stream to 256 kbit/s (transparent) — 6x less bandwidth, useful on busy Wi-Fi.",
+            "Compresse le flux émis à 256 kbit/s (transparent) — 6x moins de bande passante, utile en Wi-Fi chargé.");
+        DiagNavLabel.Text = Loc.T("Diagnostics", "Diagnostic");
+        DiagStreamHeader.Text = Loc.T("STREAM", "FLUX");
+        DiagLogHeader.Text = Loc.T("LOG", "JOURNAL");
+        DiagLatencyLabel.Text = Loc.T("Latency", "Latence");
+        DiagRateLabel.Text = Loc.T("Bitrate", "Débit");
+        if (_page == AppPage.Settings)
+        {
+            PopulateOutputCombo();
+            PopulateDestCombo();
+        }
 
         EmptyHint.Text = Loc.T("No paired phone — pair one in Windows Bluetooth settings.",
                                "Aucun téléphone appairé — appaire-le dans les réglages Bluetooth de Windows.");
@@ -201,9 +233,9 @@ public partial class MainWindow : Window
             "Only affects the received audio (phone or other PC) — never this PC's own sounds.",
             "N'agit que sur le son reçu (téléphone ou autre PC) — jamais sur les sons de ce PC.");
 
-        if (SettingsPanel.Visibility == Visibility.Visible)
+        if (_page != AppPage.Main)
         {
-            TitleText.Text = Loc.T("Settings", "Réglages");
+            TitleText.Text = TitleFor(_page);
             UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
                                       $"Version installée : {Updater.CurrentVersion}");
         }
@@ -220,32 +252,85 @@ public partial class MainWindow : Window
         Loc.SetFrench(LangFrench.IsChecked == true);
     }
 
-    /// <summary>La page Réglages remplace la page principale, et inversement.</summary>
-    private void ShowSettingsView(bool show)
+    private UIElement PanelFor(AppPage page) => page switch
     {
-        if (show)
+        AppPage.Main => MainPanel,
+        AppPage.Settings => SettingsPanel,
+        _ => DiagPanel,
+    };
+
+    private string TitleFor(AppPage page) => page switch
+    {
+        AppPage.Main => "Audio Share",
+        AppPage.Settings => Loc.T("Settings", "Réglages"),
+        _ => Loc.T("Diagnostics", "Diagnostic"),
+    };
+
+    /// <summary>
+    /// Bascule de page avec transition : la nouvelle page glisse depuis la
+    /// droite (navigation avant) ou la gauche (retour) en fondu, le titre
+    /// fond aussi. Une seule page visible à la fois ; MinHeight évite que la
+    /// fenêtre (SizeToContent) rétrécisse en quittant la page principale.
+    /// </summary>
+    private void NavigateTo(AppPage target, bool forward)
+    {
+        if (target == _page) return;
+
+        if (_page == AppPage.Main) MinHeight = ActualHeight;
+        if (target == AppPage.Main) MinHeight = 0;
+
+        if (target == AppPage.Settings)
         {
             AutostartToggle.IsChecked = IsAutostartEnabled();
             PopulateOutputCombo();
+            PopulateDestCombo();
+            _syncingOpus = true;
+            OpusToggle.IsChecked = Prefs.OpusEnabled;
+            _syncingOpus = false;
             _syncingLanguage = true;
             LangEnglish.IsChecked = !Loc.French;
             LangFrench.IsChecked = Loc.French;
             _syncingLanguage = false;
             UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
                                       $"Version installée : {Updater.CurrentVersion}");
-            // La page Réglages, plus courte, garde la taille de la page
-            // principale : pas de fenêtre qui rétrécit à la bascule.
-            MinHeight = ActualHeight;
         }
-        else
+        else if (target == AppPage.Diag)
         {
-            MinHeight = 0;
+            UpdateDiagnostics();
         }
-        SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        MainPanel.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
-        TitleText.Text = show ? Loc.T("Settings", "Réglages") : "Audio Share";
-        SettingsButton.Content = show ? "" : ""; // croix / engrenage
-        SettingsButton.ToolTip = show ? "Retour" : "Réglages";
+
+        PanelFor(_page).Visibility = Visibility.Collapsed;
+        _page = target;
+        var panel = PanelFor(target);
+        panel.Visibility = Visibility.Visible;
+        AnimatePanelIn(panel, fromRight: forward);
+
+        TitleText.Text = TitleFor(target);
+        TitleText.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
+        SettingsButton.Content = target switch
+        {
+            AppPage.Main => "",     // engrenage
+            AppPage.Settings => "", // croix
+            _ => "",                // chevron retour
+        };
+        SettingsButton.ToolTip = target == AppPage.Main
+            ? Loc.T("Settings", "Réglages") : Loc.T("Back", "Retour");
+    }
+
+    /// <summary>Glissement horizontal + fondu, sens selon la navigation.</summary>
+    private static void AnimatePanelIn(UIElement panel, bool fromRight)
+    {
+        if (panel.RenderTransform is not TranslateTransform slide)
+        {
+            slide = new TranslateTransform();
+            panel.RenderTransform = slide;
+        }
+        slide.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(fromRight ? 34 : -34, 0, TimeSpan.FromMilliseconds(240))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        panel.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
     }
 
     private static bool IsAutostartEnabled()
@@ -316,6 +401,109 @@ public partial class MainWindow : Window
         _net.ApplyOutputDevice();
     }
 
+    // ---------- Réseau (destination, compression) ----------
+
+    private bool _syncingDest, _syncingOpus;
+
+    /// <summary>
+    /// « Automatique » + la destination mémorisée tout de suite, puis les
+    /// Audio Share réellement découverts (sonde d'une seconde) en différé.
+    /// </summary>
+    private async void PopulateDestCombo()
+    {
+        var saved = Prefs.SendTarget;
+        var items = new List<OutputChoice> { new() { Id = null, Name = Loc.T("Automatic", "Automatique") } };
+        if (!string.IsNullOrEmpty(saved)) items.Add(new OutputChoice { Id = saved, Name = saved });
+
+        _syncingDest = true;
+        DestCombo.ItemsSource = items;
+        DestCombo.SelectedItem = items.FirstOrDefault(i => i.Id == saved) ?? items[0];
+        _syncingDest = false;
+
+        var found = await NetworkSender.DiscoverAllAsync();
+        foreach (var name in found)
+        {
+            if (!items.Any(i => string.Equals(i.Id, name, StringComparison.OrdinalIgnoreCase)))
+                items.Add(new OutputChoice { Id = name, Name = name });
+        }
+
+        _syncingDest = true;
+        DestCombo.ItemsSource = null;
+        DestCombo.ItemsSource = items;
+        DestCombo.SelectedItem = items.FirstOrDefault(
+            i => string.Equals(i.Id, Prefs.SendTarget, StringComparison.OrdinalIgnoreCase)) ?? items[0];
+        _syncingDest = false;
+    }
+
+    private async void Dest_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || _syncingDest) return;
+        if (DestCombo.SelectedItem is not OutputChoice choice) return;
+        Prefs.SendTarget = choice.Id;
+        await RestartSenderIfRunningAsync();
+    }
+
+    private async void Opus_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _syncingOpus) return;
+        Prefs.OpusEnabled = OpusToggle.IsChecked == true;
+        await RestartSenderIfRunningAsync();
+    }
+
+    /// <summary>
+    /// Destination ou compression changée en pleine émission : redémarrage,
+    /// avec une pause le temps que la boucle rétablisse les réglages audio
+    /// sauvegardés (sinon le nouveau départ mémoriserait le volume épinglé).
+    /// </summary>
+    private async Task RestartSenderIfRunningAsync()
+    {
+        if (!_sender.IsRunning) return;
+        _sender.Stop();
+        await Task.Delay(700);
+        if (SendToggle.IsChecked == true) _sender.Start();
+    }
+
+    // ---------- Diagnostic ----------
+
+    private long _diagBytes;
+    private long _diagAt;
+
+    private void UpdateDiagnostics()
+    {
+        DiagLatency.Text = _net.LatencyMs is int ms ? $"{ms} ms" : "—";
+
+        // Débit instantané : delta d'octets (émis + reçus) depuis le dernier
+        // passage, converti en kbit/s.
+        long bytes = _sender.BytesSent + _net.BytesReceived;
+        long now = Environment.TickCount64;
+        if (_diagAt > 0 && now > _diagAt)
+        {
+            double kbps = (bytes - _diagBytes) * 8.0 / (now - _diagAt);
+            DiagRate.Text = kbps > 1 ? $"{kbps:0} kbit/s" : "—";
+        }
+        _diagBytes = bytes;
+        _diagAt = now;
+
+        DiagLog.Text = TailLog(6);
+    }
+
+    /// <summary>Dernières lignes du journal, lu sans gêner les écritures.</summary>
+    private static string TailLog(int lines)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "audioshare.log");
+            using var fs = new System.IO.FileStream(path, System.IO.FileMode.Open,
+                System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite);
+            if (fs.Length > 16384) fs.Seek(-16384, System.IO.SeekOrigin.End);
+            using var reader = new System.IO.StreamReader(fs);
+            var all = reader.ReadToEnd()
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return string.Join("\n", all.TakeLast(lines));
+        }
+        catch { return ""; }
+    }
+
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         CheckUpdateButton.IsEnabled = false;
@@ -381,9 +569,13 @@ public partial class MainWindow : Window
 
     private void UpdateSendUi()
     {
+        bool statusWasVisible = SendStatus.Visibility == Visibility.Visible;
         SendStatus.Text = _sender.State;
         SendStatus.Visibility = string.IsNullOrEmpty(_sender.State)
             ? Visibility.Collapsed : Visibility.Visible;
+        if (!statusWasVisible && SendStatus.Visibility == Visibility.Visible)
+            SendStatus.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)));
         VolumeHeader.Text = _sender.IsRunning
             ? Loc.T("SENT AUDIO", "SON ÉMIS")
             : Loc.T("RECEIVED AUDIO", "SON REÇU");
@@ -579,8 +771,10 @@ public partial class MainWindow : Window
 
     private void PollPhoneSession()
     {
-        // La latence affichée à côté du nom de l'émetteur vit au même rythme.
+        // La latence affichée à côté du nom de l'émetteur vit au même rythme,
+        // tout comme la page diagnostic quand elle est ouverte.
         if (_net.IsReceiving && IsVisible) UpdateNetworkUi();
+        if (IsVisible && _page == AppPage.Diag) UpdateDiagnostics();
         PhoneAudio.Refresh();
         bool present = PhoneAudio.IsPresent;
         VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;
@@ -739,7 +933,7 @@ public partial class MainWindow : Window
     private void ShowFlyout()
     {
         // Le panneau rouvre toujours sur la page principale.
-        if (SettingsPanel.Visibility == Visibility.Visible) ShowSettingsView(false);
+        if (_page != AppPage.Main) NavigateTo(AppPage.Main, forward: false);
         PlaceBottomRight();
         Show();
         Activate();

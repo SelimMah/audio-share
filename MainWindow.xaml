@@ -94,6 +94,69 @@
                                        Margin="0,0,0,10"/>
                         </StackPanel>
                     </Border>
+
+                    <TextBlock x:Name="NetworkHeader" Text="NETWORK" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource Card}" Padding="16,4">
+                        <StackPanel>
+                            <Grid x:Name="DestRow" Height="44">
+                                <TextBlock x:Name="DestLabel" Text="Send to"
+                                           Style="{StaticResource RowLabel}"/>
+                                <ComboBox x:Name="DestCombo" Style="{StaticResource PlainCombo}"
+                                          MaxWidth="180" DisplayMemberPath="Name"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          SelectionChanged="Dest_Changed"/>
+                            </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}"/>
+                            <Grid x:Name="OpusRow" Height="44">
+                                <TextBlock x:Name="OpusLabel" Text="Opus compression (Wi-Fi)"
+                                           Style="{StaticResource RowLabel}"/>
+                                <CheckBox x:Name="OpusToggle" Style="{StaticResource Switch}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          Checked="Opus_Changed" Unchecked="Opus_Changed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}" Padding="6,4" Margin="0,14,0,0">
+                        <Button x:Name="DiagNavButton" Style="{StaticResource NavRow}"
+                                Click="DiagNav_Click">
+                            <TextBlock x:Name="DiagNavLabel" Text="Diagnostics"
+                                       FontFamily="{StaticResource Body}" FontSize="14"
+                                       Foreground="{StaticResource Label}"/>
+                        </Button>
+                    </Border>
+                </StackPanel>
+
+                <!-- Page Diagnostic : accessible depuis les Réglages -->
+                <StackPanel x:Name="DiagPanel" Visibility="Collapsed">
+                    <TextBlock x:Name="DiagStreamHeader" Text="STREAM" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource Card}" Padding="16,4">
+                        <StackPanel>
+                            <Grid Height="40">
+                                <TextBlock x:Name="DiagLatencyLabel" Text="Latency"
+                                           Style="{StaticResource RowLabel}"/>
+                                <TextBlock x:Name="DiagLatency" Text="—"
+                                           FontFamily="{StaticResource Body}" FontSize="13"
+                                           Foreground="{StaticResource LabelSecondary}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}"/>
+                            <Grid Height="40">
+                                <TextBlock x:Name="DiagRateLabel" Text="Bitrate"
+                                           Style="{StaticResource RowLabel}"/>
+                                <TextBlock x:Name="DiagRate" Text="—"
+                                           FontFamily="{StaticResource Body}" FontSize="13"
+                                           Foreground="{StaticResource LabelSecondary}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="DiagLogHeader" Text="LOG" Style="{StaticResource SectionHeader}"/>
+                    <Border Style="{StaticResource Card}" Padding="16,10">
+                        <TextBlock x:Name="DiagLog" TextWrapping="Wrap"
+                                   FontFamily="Cascadia Mono, Consolas" FontSize="10"
+                                   Foreground="{StaticResource LabelTertiary}" LineHeight="14"/>
+                    </Border>
                 </StackPanel>
 
                 <!-- Page principale -->

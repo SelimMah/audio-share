@@ -3,6 +3,8 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Concentus;
+using Concentus.Enums;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -47,6 +49,10 @@ internal sealed class NetworkSender : IDisposable
 
     private volatile float _level;
     private long _levelAt;
+    private long _bytesSent;
+
+    /// <summary>Octets envoyés depuis le lancement, pour le débit (diagnostic).</summary>
+    public long BytesSent => Interlocked.Read(ref _bytesSent);
 
     /// <summary>
     /// Crête du son émis (0..1), pour le vumètre. La boucle WASAPI cesse de
@@ -166,12 +172,15 @@ internal sealed class NetworkSender : IDisposable
     {
         using var udp = new UdpClient { EnableBroadcast = true };
         var probe = Encoding.UTF8.GetBytes("ASHARE?");
+        string? preferred = Prefs.SendTarget; // destination choisie, null = auto
+        int rounds = 0;
 
         while (true)
         {
             ct.ThrowIfCancellationRequested();
             await udp.SendAsync(probe, new IPEndPoint(IPAddress.Broadcast, NetworkReceiver.DiscoveryPort), ct);
 
+            (IPAddress Address, string Name)? fallback = null;
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(2000);
             try
@@ -187,14 +196,56 @@ internal sealed class NetworkSender : IDisposable
                     if (string.Equals(name, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    return (reply.RemoteEndPoint.Address, name);
+                    if (preferred == null
+                        || string.Equals(name, preferred, StringComparison.OrdinalIgnoreCase))
+                        return (reply.RemoteEndPoint.Address, name);
+
+                    fallback ??= (reply.RemoteEndPoint.Address, name);
                 }
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 // pas de réponse dans les temps : on rediffuse la sonde
             }
+
+            // La destination choisie ne répond pas : après trois sondes, se
+            // rabattre sur ce qui existe plutôt que d'attendre indéfiniment.
+            rounds++;
+            if (fallback is { } f && preferred != null && rounds >= 3)
+            {
+                Log.Write($"Émission : « {preferred} » introuvable, repli sur « {f.Name} »");
+                return f;
+            }
         }
+    }
+
+    /// <summary>
+    /// Sonde unique pour la liste « Destination » des Réglages : tous les
+    /// Audio Share qui répondent dans le délai (nous-même exclus).
+    /// </summary>
+    public static async Task<List<string>> DiscoverAllAsync(int timeoutMs = 1200)
+    {
+        var found = new List<string>();
+        try
+        {
+            using var udp = new UdpClient { EnableBroadcast = true };
+            var probe = Encoding.UTF8.GetBytes("ASHARE?");
+            await udp.SendAsync(probe, new IPEndPoint(IPAddress.Broadcast, NetworkReceiver.DiscoveryPort));
+            using var cts = new CancellationTokenSource(timeoutMs);
+            while (true)
+            {
+                var reply = await udp.ReceiveAsync(cts.Token);
+                var text = Encoding.UTF8.GetString(reply.Buffer);
+                if (!text.StartsWith("ASHARE!")) continue;
+                var name = text[7..];
+                if (string.Equals(name, Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!found.Contains(name, StringComparer.OrdinalIgnoreCase)) found.Add(name);
+            }
+        }
+        catch (OperationCanceledException) { /* fin de la fenêtre d'écoute */ }
+        catch (Exception ex) { Log.Write($"Découverte : {ex.Message}"); }
+        return found;
     }
 
     private async Task StreamAsync(IPAddress address, string receiverName, CancellationToken ct)
@@ -273,12 +324,27 @@ internal sealed class NetworkSender : IDisposable
         EmissionVolumeChanged?.Invoke(_sendVolume);
         SendControl($"ASHAREVOL {_sendVolume.ToString(CultureInfo.InvariantCulture)}");
 
+        // Opus exige 48 kHz (le mix WASAPI l'est presque toujours) et 1 ou 2
+        // canaux ; sinon, PCM brut avec une trace dans le journal.
+        bool useOpus = Prefs.OpusEnabled && format.SampleRate == 48000 && format.Channels is 1 or 2;
+        if (Prefs.OpusEnabled && !useOpus)
+            Log.Write($"Émission : Opus impossible ({format.SampleRate} Hz, {format.Channels} canaux) — PCM brut");
+
+        IOpusEncoder? opus = null;
+        if (useOpus)
+        {
+            opus = OpusCodecFactory.CreateEncoder(48000, format.Channels, OpusApplication.OPUS_APPLICATION_AUDIO);
+            opus.Bitrate = 256_000; // transparent, ~6x plus léger que le PCM
+            opus.SignalType = OpusSignal.OPUS_SIGNAL_MUSIC;
+        }
+
         try
         {
-            // En-tête : magie, format (converti en 16 bits), nom de cette machine
+            // En-tête : magie (01 = PCM brut, 02 = trames Opus préfixées d'une
+            // longueur sur 2 octets), format 16 bits, nom de cette machine.
             var name = Encoding.UTF8.GetBytes(Environment.MachineName);
             var header = new byte[16 + 2 + name.Length];
-            Encoding.ASCII.GetBytes("ASHARE01").CopyTo(header, 0);
+            Encoding.ASCII.GetBytes(useOpus ? "ASHARE02" : "ASHARE01").CopyTo(header, 0);
             BitConverter.GetBytes(format.SampleRate).CopyTo(header, 8);
             BitConverter.GetBytes((short)format.Channels).CopyTo(header, 12);
             BitConverter.GetBytes((short)16).CopyTo(header, 14);
@@ -288,41 +354,58 @@ internal sealed class NetworkSender : IDisposable
 
             var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
+            // Accumulateur Opus : le codec mange des trames fixes de 10 ms.
+            int frameSamples = 480 * format.Channels;
+            var acc = new short[frameSamples];
+            int accCount = 0;
+            var packet = new byte[2 + 1500];
+
             capture.DataAvailable += (_, e) =>
             {
                 try
                 {
-                    byte[] payload;
                     float scale = _sendVolume;
                     float peak = 0f;
-                    if (isFloat)
+
+                    // Conversion unique en PCM 16 bits, volume émis appliqué.
+                    int samples = isFloat ? e.BytesRecorded / 4 : e.BytesRecorded / 2;
+                    var pcm = new short[samples];
+                    for (int i = 0; i < samples; i++)
                     {
-                        // float 32 -> PCM 16 bits : moitié moins de bande passante
-                        int samples = e.BytesRecorded / 4;
-                        payload = new byte[samples * 2];
-                        for (int i = 0; i < samples; i++)
-                        {
-                            float v = BitConverter.ToSingle(e.Buffer, i * 4) * scale;
-                            float a = Math.Abs(v);
-                            if (a > peak) peak = a;
-                            short s = (short)Math.Clamp((int)(v * 32767f), short.MinValue, short.MaxValue);
-                            payload[i * 2] = (byte)s;
-                            payload[i * 2 + 1] = (byte)(s >> 8);
-                        }
-                    }
-                    else
-                    {
-                        payload = new byte[e.BytesRecorded];
-                        Array.Copy(e.Buffer, payload, e.BytesRecorded);
-                        for (int i = 0; i + 1 < payload.Length; i += 2)
-                        {
-                            float a = Math.Abs(BitConverter.ToInt16(payload, i) / 32768f);
-                            if (a > peak) peak = a;
-                        }
+                        float v = (isFloat
+                            ? BitConverter.ToSingle(e.Buffer, i * 4)
+                            : BitConverter.ToInt16(e.Buffer, i * 2) / 32768f) * scale;
+                        float a = Math.Abs(v);
+                        if (a > peak) peak = a;
+                        pcm[i] = (short)Math.Clamp((int)(v * 32767f), short.MinValue, short.MaxValue);
                     }
                     _level = Math.Min(1f, peak);
                     Interlocked.Exchange(ref _levelAt, Environment.TickCount64);
-                    net.Write(payload, 0, payload.Length);
+
+                    if (opus == null)
+                    {
+                        var payload = new byte[samples * 2];
+                        Buffer.BlockCopy(pcm, 0, payload, 0, payload.Length);
+                        net.Write(payload, 0, payload.Length);
+                        Interlocked.Add(ref _bytesSent, payload.Length);
+                        return;
+                    }
+
+                    for (int i = 0; i < samples;)
+                    {
+                        int take = Math.Min(samples - i, frameSamples - accCount);
+                        Array.Copy(pcm, i, acc, accCount, take);
+                        accCount += take;
+                        i += take;
+                        if (accCount < frameSamples) continue;
+                        accCount = 0;
+
+                        int len = opus.Encode(acc, 480, packet.AsSpan(2), packet.Length - 2);
+                        packet[0] = (byte)len;
+                        packet[1] = (byte)(len >> 8);
+                        net.Write(packet, 0, 2 + len);
+                        Interlocked.Add(ref _bytesSent, 2 + len);
+                    }
                 }
                 catch (Exception ex) { done.TrySetException(ex); }
             };

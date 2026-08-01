@@ -2,6 +2,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Concentus;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
@@ -135,10 +136,13 @@ internal sealed class NetworkReceiver : IDisposable
     public const int DiscoveryPort = 42501;
     public const int StreamPort = 42502;
 
-    // Latence cible du tampon de réception : assez pour absorber la gigue
-    // réseau, assez peu pour rester regardable sur une vidéo. Le correcteur
-    // de dérive maintient le tampon autour de cette valeur.
-    private const int TargetLatencyMs = 120;
+    // Latence cible initiale du tampon de réception : prudente au départ,
+    // puis ADAPTATIVE — toutes les 10 s, le plus bas niveau de tampon observé
+    // dit de combien on peut descendre (gigue réelle du lien) ou s'il faut
+    // remonter. Sur un lien propre, elle converge vers TargetFloorMs.
+    private const int TargetStartMs = 120;
+    private const int TargetFloorMs = 40;
+    private const int TargetCeilMs = 300;
 
     // Au-delà : le réseau s'est figé puis a vidé sa rafale d'un coup — on
     // resynchronise franchement plutôt que de rattraper 0,5 % par 0,5 %.
@@ -168,6 +172,11 @@ internal sealed class NetworkReceiver : IDisposable
 
     /// <summary>Crête du son rendu (0..1), pour le vumètre.</summary>
     public float OutputLevel => _vb?.Peak ?? 0f;
+
+    private long _bytesReceived;
+
+    /// <summary>Octets reçus depuis le lancement, pour le débit (diagnostic).</summary>
+    public long BytesReceived => Interlocked.Read(ref _bytesReceived);
 
     /// <summary>Levé sur un thread quelconque quand un émetteur arrive ou part.</summary>
     public event Action? Changed;
@@ -281,7 +290,9 @@ internal sealed class NetworkReceiver : IDisposable
 
             var header = new byte[64];
             await ReadExactAsync(stream, header, 16, ct);
-            if (Encoding.ASCII.GetString(header, 0, 8) != "ASHARE01") return;
+            string magic = Encoding.ASCII.GetString(header, 0, 8);
+            bool isOpus = magic == "ASHARE02";
+            if (magic != "ASHARE01" && !isOpus) return;
             int rate = BitConverter.ToInt32(header, 8);
             int channels = BitConverter.ToInt16(header, 12);
             int bits = BitConverter.ToInt16(header, 14);
@@ -292,7 +303,8 @@ internal sealed class NetworkReceiver : IDisposable
             await ReadExactAsync(stream, nameBuffer, nameLength, ct);
             _senderName = Encoding.UTF8.GetString(nameBuffer);
             _senderAddress = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
-            Log.Write($"Réseau : émetteur « {_senderName} » connecté ({rate} Hz, {channels} canaux, {bits} bits)");
+            Log.Write($"Réseau : émetteur « {_senderName} » connecté "
+                      + $"({rate} Hz, {channels} canaux, {bits} bits, {(isOpus ? "Opus" : "PCM")})");
 
             var format = new WaveFormat(rate, bits, channels);
             var buffer = new BufferedWaveProvider(format)
@@ -302,7 +314,7 @@ internal sealed class NetworkReceiver : IDisposable
             };
             // Coussin initial de silence : la lecture démarre tout de suite
             // avec la latence cible déjà en réserve, prête à absorber la gigue.
-            var cushion = new byte[format.AverageBytesPerSecond * TargetLatencyMs / 1000
+            var cushion = new byte[format.AverageBytesPerSecond * TargetStartMs / 1000
                                    / format.BlockAlign * format.BlockAlign];
             buffer.AddSamples(cushion, 0, cushion.Length);
 
@@ -321,27 +333,75 @@ internal sealed class NetworkReceiver : IDisposable
             }
             Changed?.Invoke();
 
-            var data = new byte[32 * 1024];
-            while (!ct.IsCancellationRequested)
-            {
-                int n = await stream.ReadAsync(data, ct);
-                if (n <= 0) break;
+            // ----- Régulation commune aux deux formats -----
+            double targetMs = TargetStartMs;
+            double windowMin = double.MaxValue;
+            long windowStart = Environment.TickCount64;
 
+            void Regulate(int addedBytes)
+            {
                 double buffered = buffer.BufferedDuration.TotalMilliseconds;
                 if (buffered > ResyncLatencyMs)
                 {
                     // Rafale après un gel réseau : on repart du direct en
-                    // reconstituant le coussin cible d'un coup.
+                    // reconstituant le coussin d'un coup.
                     buffer.ClearBuffer();
                     buffer.AddSamples(cushion, 0, cushion.Length);
-                    buffered = TargetLatencyMs;
+                    buffered = TargetStartMs;
                 }
-                buffer.AddSamples(data, 0, n);
+
+                // Latence adaptative : le plus bas niveau de tampon observé
+                // sur 10 s mesure la gigue réelle. Trop de marge → on descend
+                // (en gardant ~30 ms de garde) ; près du vide → on remonte.
+                windowMin = Math.Min(windowMin, buffered);
+                if (Environment.TickCount64 - windowStart > 10_000)
+                {
+                    if (windowMin > 45)
+                        targetMs = Math.Max(TargetFloorMs, targetMs - (windowMin - 30));
+                    else if (windowMin < 12)
+                        targetMs = Math.Min(TargetCeilMs, targetMs + 30);
+                    windowStart = Environment.TickCount64;
+                    windowMin = double.MaxValue;
+                }
 
                 // Asservissement de la dérive d'horloge : écart de latence
                 // replié en vitesse de lecture, ±0,5 % max (inaudible).
                 drift.Ratio = 1f + Math.Clamp(
-                    (float)(buffered - TargetLatencyMs) / 4000f, -0.005f, 0.005f);
+                    (float)(buffered - targetMs) / 4000f, -0.005f, 0.005f);
+                Interlocked.Add(ref _bytesReceived, addedBytes);
+            }
+
+            if (isOpus)
+            {
+                using var opus = OpusCodecFactory.CreateDecoder(rate, channels);
+                var lenBuf = new byte[2];
+                var payload = new byte[1500];
+                var frame = new short[5760 * channels]; // 120 ms max par trame Opus
+                var frameBytes = new byte[frame.Length * 2];
+                while (!ct.IsCancellationRequested)
+                {
+                    await ReadExactAsync(stream, lenBuf, 2, ct);
+                    int len = lenBuf[0] | (lenBuf[1] << 8);
+                    if (len <= 0 || len > payload.Length) break;
+                    await ReadExactAsync(stream, payload, len, ct);
+
+                    int decoded = opus.Decode(payload.AsSpan(0, len), frame, frame.Length / channels);
+                    int bytes = decoded * channels * 2;
+                    Buffer.BlockCopy(frame, 0, frameBytes, 0, bytes);
+                    Regulate(2 + len);
+                    buffer.AddSamples(frameBytes, 0, bytes);
+                }
+            }
+            else
+            {
+                var data = new byte[32 * 1024];
+                while (!ct.IsCancellationRequested)
+                {
+                    int n = await stream.ReadAsync(data, ct);
+                    if (n <= 0) break;
+                    Regulate(n);
+                    buffer.AddSamples(data, 0, n);
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -380,14 +440,16 @@ internal sealed class NetworkReceiver : IDisposable
                 using var enumerator = new MMDeviceEnumerator();
                 var device = enumerator.GetDevice(id);
                 if (device.State == DeviceState.Active)
-                    return new WasapiOut(device, AudioClientShareMode.Shared, true, 60);
+                    return new WasapiOut(device, AudioClientShareMode.Shared, true, 30);
             }
             catch (Exception ex)
             {
                 Log.Write($"Réseau : sortie choisie indisponible, sortie par défaut ({ex.Message})");
             }
         }
-        return new WasapiOut(AudioClientShareMode.Shared, 60);
+        // 30 ms de tampon de sortie (au lieu de 60) : moitié de latence en
+        // moins à ce maillon, toujours confortable en mode partagé.
+        return new WasapiOut(AudioClientShareMode.Shared, 30);
     }
 
     /// <summary>
