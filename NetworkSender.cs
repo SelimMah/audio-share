@@ -12,24 +12,27 @@ namespace AudioShare;
 /// Émission : capture tout le son de ce PC (boucle WASAPI sur la sortie par
 /// défaut), le convertit en PCM 16 bits et l'envoie à un autre Audio Share
 /// découvert sur le réseau local. Pendant l'émission :
-///  - les haut-parleurs locaux sont coupés : muets ET épinglés à un volume
-///    plancher (2 %), pour qu'un démutage par la touche volume + ne laisse
-///    fuir qu'un son inaudible le temps de la re-coupure (notification du
-///    périphérique) ;
+///  - les haut-parleurs locaux sont coupés : muets ET à 0 %, et les touches
+///    volume sont interceptées avant Windows (VolumeKeyHook) — aucune fuite
+///    possible ;
 ///  - les réglages audio (muet, volume) sont sauvegardés à l'activation et
 ///    rétablis à l'arrêt de l'émission ou à la fermeture de l'app ;
 ///  - le volume ÉMIS est purement logiciel, appliqué aux échantillons :
-///    le curseur de l'app le fixe directement, les touches physiques le
-///    déplacent via le delta mesuré par rapport au plancher ;
+///    le curseur de l'app le fixe directement, les touches interceptées le
+///    déplacent par pas de 2 % avec un aperçu façon Windows (VolumeOsd) ;
 ///  - la balance de l'app est relayée au récepteur (contrôles partagés)
 ///    par datagrammes UDP.
 /// </summary>
 internal sealed class NetworkSender : IDisposable
 {
-    // Volume réel auquel le périphérique est épinglé pendant l'émission : bas
-    // pour qu'une fuite au démutage soit inaudible, non nul pour que la touche
-    // volume − produise encore un changement détectable.
-    private const float PinnedVolume = 0.02f;
+    // Volume réel auquel le périphérique est épinglé pendant l'émission :
+    // 0 %, car les touches volume sont interceptées par VolumeKeyHook avant
+    // Windows — rien ne peut plus démuter ni monter le vrai volume, et même
+    // un démutage par un autre biais resterait silencieux.
+    private const float PinnedVolume = 0f;
+
+    // Pas d'un appui de touche volume, comme l'OSD de Windows (2/100).
+    private const float KeyStep = 0.02f;
 
     private CancellationTokenSource? _cts;
     private Task? _runTask;
@@ -75,6 +78,30 @@ internal sealed class NetworkSender : IDisposable
         _sendVolume = Math.Clamp(volume, 0f, 1f);
         EmissionVolumeChanged?.Invoke(_sendVolume);
     }
+
+    /// <summary>Appui volume +/− intercepté : ajuste le volume émis d'un pas.</summary>
+    public float NudgeEmissionVolume(int steps)
+    {
+        SetEmissionVolume(_sendVolume + steps * KeyStep);
+        return _sendVolume;
+    }
+
+    /// <summary>Touche muet interceptée : bascule le volume émis 0 ↔ précédent.</summary>
+    public float ToggleEmissionMute()
+    {
+        if (_sendVolume > 0f)
+        {
+            _lastAudibleVolume = _sendVolume;
+            SetEmissionVolume(0f);
+        }
+        else
+        {
+            SetEmissionVolume(_lastAudibleVolume > 0f ? _lastAudibleVolume : 0.5f);
+        }
+        return _sendVolume;
+    }
+
+    private float _lastAudibleVolume;
 
     // ---------- Contrôles partagés (balance vers le récepteur) ----------
 
@@ -182,9 +209,9 @@ internal sealed class NetworkSender : IDisposable
         // échantillons) : le curseur volume réel du périphérique ne module pas
         // le prélèvement de la boucle de façon fiable (l'heuristique
         // HardwareSupport s'est révélée fausse selon les machines). Le
-        // périphérique, lui, est muet ET épinglé à un volume plancher : si la
-        // touche volume + le rallume, la fuite se fait à 2 % — inaudible —
-        // le temps que la notification recoupe.
+        // périphérique, lui, est muet ET à 0 % : les touches volume étant
+        // interceptées en amont (VolumeKeyHook), rien ne le rallume, et un
+        // démutage par un autre biais resterait silencieux.
         if (!_volumeSeeded)
         {
             // On démarre au volume que l'utilisateur avait ; les reconnexions
@@ -196,10 +223,11 @@ internal sealed class NetworkSender : IDisposable
         endpointVolume.MasterVolumeLevelScalar = PinnedVolume;
         Log.Write($"Émission : haut-parleurs coupés, volume émis {_sendVolume:0.00}");
 
-        // Les touches physiques déplacent le volume réel PAR RAPPORT au
-        // plancher : ce delta est la commande de l'utilisateur (+/−), appliqué
-        // au volume émis, puis le périphérique est ré-épinglé. Nos propres
-        // remises au plancher donnent un delta nul et sont donc ignorées.
+        // Filet de sécurité : si le volume réel bouge quand même (curseur des
+        // réglages Windows, source non interceptée), le déplacement par
+        // rapport au plancher est replié dans le volume émis puis le
+        // périphérique est ré-épinglé. Nos propres remises au plancher
+        // donnent un delta nul et sont donc ignorées.
         void OnVolumeNotification(NAudio.CoreAudioApi.AudioVolumeNotificationData data)
         {
             try

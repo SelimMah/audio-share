@@ -21,6 +21,7 @@ internal static class WindowEffects
 
     private const int GwlExStyle = -20;
     private const int WsExToolWindow = 0x00000080;
+    private const int WsExNoActivate = 0x08000000;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
@@ -53,5 +54,17 @@ internal static class WindowEffects
 
         int backdrop = BackdropAcrylic;
         DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
+    }
+
+    /// <summary>
+    /// Même habillage que le flyout, plus « non activable » : l'aperçu de
+    /// volume ne doit jamais voler le focus à l'application au premier plan.
+    /// </summary>
+    public static void ApplyOsd(Window window)
+    {
+        Apply(window);
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        SetWindowLong(hwnd, GwlExStyle, GetWindowLong(hwnd, GwlExStyle) | WsExNoActivate);
     }
 }

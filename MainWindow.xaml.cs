@@ -47,6 +47,8 @@ public partial class MainWindow : Window
     private bool _quitting;
     private bool _trayHintShown;
     private bool _syncingVolume;
+    private VolumeKeyHook? _volumeKeys;
+    private VolumeOsd? _osd;
 
     public MainWindow()
     {
@@ -243,6 +245,28 @@ public partial class MainWindow : Window
             ? Visibility.Collapsed : Visibility.Visible;
         VolumeHeader.Text = _sender.IsRunning ? "SON ÉMIS" : "SON REÇU";
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
+
+        // Pendant l'émission, les touches volume sont interceptées : elles
+        // pilotent le volume émis avec notre aperçu, et le périphérique
+        // (muet, 0 %) n'est jamais rallumé par Windows.
+        if (_sender.IsRunning && _volumeKeys == null)
+        {
+            _volumeKeys = new VolumeKeyHook();
+            _volumeKeys.VolumeStep += s => ShowVolumeOsd(_sender.NudgeEmissionVolume(s));
+            _volumeKeys.MuteToggle += () => ShowVolumeOsd(_sender.ToggleEmissionMute());
+        }
+        else if (!_sender.IsRunning && _volumeKeys != null)
+        {
+            _volumeKeys.Dispose();
+            _volumeKeys = null;
+            _osd?.HideNow();
+        }
+    }
+
+    private void ShowVolumeOsd(float volume)
+    {
+        _osd ??= new VolumeOsd();
+        _osd.ShowVolume(volume);
     }
 
     private void PollPhoneSession()
@@ -602,6 +626,8 @@ public partial class MainWindow : Window
         // la sortie audio et le reste du PC devient muet.
         foreach (var c in _connections.Values) c.Dispose();
         _connections.Clear();
+        _volumeKeys?.Dispose();
+        _osd?.Close();
         _net.Dispose();
         _sender.Dispose();
         _tray.Dispose();
