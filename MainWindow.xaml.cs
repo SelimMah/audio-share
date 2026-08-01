@@ -1041,9 +1041,13 @@ public partial class MainWindow : Window
         try
         {
             await connection.StartAsync();
+            Log.Write($"Bluetooth : réception activée pour « {dev.Name} »");
         }
-        catch
+        catch (Exception ex)
         {
+            // Sans cette trace, un échec ici est totalement invisible :
+            // l'appareil reste « en attente » sans que rien ne l'explique.
+            Log.Write($"Bluetooth : activation refusée pour « {dev.Name} » — {ex.Message}");
             CloseConnection(dev.Id);
             DeviceList.SelectedItem = null;
             return;
@@ -1081,12 +1085,36 @@ public partial class MainWindow : Window
         {
             var result = await connection.OpenAsync();
             if (result.Status == AudioPlaybackConnectionOpenResultStatus.Success)
+            {
                 _retryTimer?.Stop();
+                // Toujours tracé, y compris quand tout se passe bien du
+                // premier coup : sans ça, un démarrage réussi ne laisse aucune
+                // trace et on ne sait pas distinguer « ouvert » de « jamais
+                // tenté » en relisant le journal.
+                Log.Write("Bluetooth : flux audio ouvert");
+                _lastOpenIssue = null;
+                return;
+            }
+            NoteOpenIssue(result.Status.ToString());
         }
-        catch
+        catch (Exception ex)
         {
-            // Le téléphone n'est pas encore connecté — on réessaie au prochain tick
+            // Le téléphone n'est pas encore connecté — on réessaie au prochain
+            // tick. On journalise quand même, mais une seule fois par cause :
+            // la tentative revient toutes les 2 s et noierait le journal.
+            NoteOpenIssue(ex.Message);
         }
+    }
+
+    // Dernière cause d'échec d'ouverture déjà journalisée, pour ne l'écrire
+    // qu'une fois tant qu'elle ne change pas.
+    private string? _lastOpenIssue;
+
+    private void NoteOpenIssue(string issue)
+    {
+        if (_lastOpenIssue == issue) return;
+        _lastOpenIssue = issue;
+        Log.Write($"Bluetooth : ouverture du flux impossible — {issue}");
     }
 
     private void CloseConnection(string id)
