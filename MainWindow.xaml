@@ -26,7 +26,8 @@
             <StackPanel Margin="20,18,20,20">
 
                 <Grid>
-                    <TextBlock Text="Audio Share" FontFamily="{StaticResource Display}"
+                    <TextBlock x:Name="TitleText" Text="Audio Share"
+                               FontFamily="{StaticResource Display}"
                                FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}"
                                Margin="4,0,0,0"/>
                     <Button x:Name="SettingsButton" Content="&#xE713;" Width="32" Height="32"
@@ -36,9 +37,9 @@
                             Click="Settings_Click" ToolTip="Réglages"/>
                 </Grid>
 
-                <!-- Réglages, dépliés par l'engrenage -->
+                <!-- Page Réglages : remplace la page principale -->
                 <StackPanel x:Name="SettingsPanel" Visibility="Collapsed">
-                    <TextBlock Text="RÉGLAGES" Style="{StaticResource SectionHeader}"/>
+                    <TextBlock Text="GÉNÉRAL" Style="{StaticResource SectionHeader}"/>
                     <Border Style="{StaticResource Card}" Padding="16,4">
                         <StackPanel>
                             <Grid Height="44">
@@ -64,6 +65,9 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
+
+                <!-- Page principale -->
+                <StackPanel x:Name="MainPanel">
 
                 <!-- Sources : téléphones Bluetooth et réseau local, une seule carte -->
                 <TextBlock Text="SOURCES" Style="{StaticResource SectionHeader}"/>
@@ -202,6 +206,8 @@
                            FontFamily="{StaticResource Body}" FontSize="12"
                            Foreground="{StaticResource LabelTertiary}" LineHeight="16"
                            Text="Clique sur un appareil pour activer la réception."/>
+
+                </StackPanel>
             </StackPanel>
     </Grid>
 </Window>

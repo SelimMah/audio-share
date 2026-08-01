@@ -105,15 +105,22 @@ public partial class MainWindow : Window
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "AudioShare"; // même nom que l'installateur
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private void Settings_Click(object sender, RoutedEventArgs e) =>
+        ShowSettingsView(SettingsPanel.Visibility != Visibility.Visible);
+
+    /// <summary>La page Réglages remplace la page principale, et inversement.</summary>
+    private void ShowSettingsView(bool show)
     {
-        bool opening = SettingsPanel.Visibility != Visibility.Visible;
-        if (opening)
+        if (show)
         {
             AutostartToggle.IsChecked = IsAutostartEnabled();
             UpdateStatus.Text = $"Version installée : {Updater.CurrentVersion}";
         }
-        SettingsPanel.Visibility = opening ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        MainPanel.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+        TitleText.Text = show ? "Réglages" : "Audio Share";
+        SettingsButton.Content = show ? "" : ""; // croix / engrenage
+        SettingsButton.ToolTip = show ? "Retour" : "Réglages";
     }
 
     private static bool IsAutostartEnabled()
@@ -299,6 +306,8 @@ public partial class MainWindow : Window
 
     private void ShowFlyout()
     {
+        // Le panneau rouvre toujours sur la page principale.
+        if (SettingsPanel.Visibility == Visibility.Visible) ShowSettingsView(false);
         PlaceBottomRight();
         Show();
         Activate();
