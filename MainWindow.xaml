@@ -160,8 +160,10 @@
                     </Hyperlink>
                 </TextBlock>
 
-                <!-- Volume et balance du son reçu (Bluetooth ou réseau) -->
-                <TextBlock Text="SON REÇU" Style="{StaticResource SectionHeader}"/>
+                <!-- Volume et balance du son reçu (Bluetooth ou réseau) ; la
+                     section devient « SON ÉMIS » pendant l'émission et le
+                     curseur pilote alors le vrai volume du périphérique. -->
+                <TextBlock x:Name="VolumeHeader" Text="SON REÇU" Style="{StaticResource SectionHeader}"/>
                 <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>

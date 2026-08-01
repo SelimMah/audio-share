@@ -2,7 +2,7 @@
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
 #define MyAppName "Audio Share"
-#define MyAppVersion "1.5.0"
+#define MyAppVersion "1.6.0"
 #define MyAppExeName "AudioShare.exe"
 
 [Setup]

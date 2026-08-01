@@ -13,19 +13,25 @@ namespace AudioShare;
 /// défaut), le convertit en PCM 16 bits et l'envoie à un autre Audio Share
 /// découvert sur le réseau local. Pendant l'émission :
 ///  - les haut-parleurs locaux sont coupés (le prélèvement de la boucle se
-///    fait avant le muet), et re-coupés si les touches volume les rallument ;
-///  - les boutons physiques de volume pilotent le niveau ENVOYÉ : sur les
-///    périphériques à volume matériel le prélèvement ignore le volume, on
-///    l'applique donc nous-mêmes aux échantillons ;
-///  - volume et balance de l'app sont relayés au récepteur (contrôles
-///    partagés) par datagrammes UDP.
+///    fait avant le muet), et re-coupés IMMÉDIATEMENT si les touches volume
+///    les rallument (notification du périphérique, pas un simple minuteur) ;
+///  - les réglages audio (muet, volume) sont sauvegardés à l'activation et
+///    rétablis à l'arrêt de l'émission ou à la fermeture de l'app ;
+///  - touches physiques ET curseur de l'app pilotent le même volume réel du
+///    périphérique, qui fixe le niveau ENVOYÉ : sur les périphériques à
+///    volume matériel le prélèvement ignore le volume, on l'applique donc
+///    nous-mêmes aux échantillons ;
+///  - la balance de l'app est relayée au récepteur (contrôles partagés)
+///    par datagrammes UDP.
 /// </summary>
 internal sealed class NetworkSender : IDisposable
 {
     private CancellationTokenSource? _cts;
+    private Task? _runTask;
     private volatile string _state = "";
     private IPAddress? _controlTarget;
     private readonly UdpClient _control = new();
+    private NAudio.CoreAudioApi.AudioEndpointVolume? _liveVolume;
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
     public string State => _state;
@@ -33,11 +39,17 @@ internal sealed class NetworkSender : IDisposable
     /// <summary>Levé sur un thread quelconque à chaque changement d'état.</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Volume réel du périphérique de sortie pendant l'émission (touches
+    /// physiques ou curseur de l'app) — pour garder le curseur synchronisé.
+    /// </summary>
+    public event Action<float>? DeviceVolumeChanged;
+
     public void Start()
     {
         Stop();
         _cts = new CancellationTokenSource();
-        _ = Task.Run(() => RunAsync(_cts.Token));
+        _runTask = Task.Run(() => RunAsync(_cts.Token));
     }
 
     public void Stop()
@@ -47,10 +59,19 @@ internal sealed class NetworkSender : IDisposable
         SetState("");
     }
 
-    // ---------- Contrôles partagés (volume / balance vers le récepteur) ----------
+    /// <summary>
+    /// Pendant l'émission, le curseur de l'app pilote le vrai volume du
+    /// périphérique — le même que celui des touches physiques, qui fixe le
+    /// niveau envoyé au récepteur.
+    /// </summary>
+    public void SetDeviceVolume(float volume)
+    {
+        var v = _liveVolume;
+        if (v == null) return;
+        try { v.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); } catch { }
+    }
 
-    public void SendVolume(float volume) =>
-        SendControl($"ASHAREVOL {volume.ToString(CultureInfo.InvariantCulture)}");
+    // ---------- Contrôles partagés (balance vers le récepteur) ----------
 
     public void SendBalance(float left, float right) =>
         SendControl($"ASHAREBAL {left.ToString(CultureInfo.InvariantCulture)} {right.ToString(CultureInfo.InvariantCulture)}");
@@ -153,12 +174,29 @@ internal sealed class NetworkSender : IDisposable
             (endpointVolume.HardwareSupport & EEndpointHardwareSupport.Volume) != 0;
         float sendScale = scaleWithMaster ? endpointVolume.MasterVolumeLevelScalar : 1f;
 
+        // Réglages audio sauvegardés à l'activation : muet ET volume sont
+        // rétablis tels quels à l'arrêt de l'émission ou à la fermeture.
         bool restoreMute = endpointVolume.Mute;
+        float restoreVolume = endpointVolume.MasterVolumeLevelScalar;
         endpointVolume.Mute = true;
         Log.Write($"Émission : haut-parleurs coupés (volume matériel : {scaleWithMaster})");
 
-        // Les touches volume de Windows rallument le son : on le recoupe
-        // aussitôt, et on relit le curseur pour suivre le volume voulu.
+        // La touche volume + de Windows RALLUME le son : la notification du
+        // périphérique permet de le recouper immédiatement (une garde
+        // périodique resterait audible), et de suivre le volume voulu.
+        void OnVolumeNotification(NAudio.CoreAudioApi.AudioVolumeNotificationData data)
+        {
+            try
+            {
+                if (!data.Muted) endpointVolume.Mute = true;
+                sendScale = scaleWithMaster ? data.MasterVolume : 1f;
+                DeviceVolumeChanged?.Invoke(data.MasterVolume);
+            }
+            catch { /* périphérique parti (déconnexion) : la capture s'arrêtera */ }
+        }
+        endpointVolume.OnVolumeNotification += OnVolumeNotification;
+
+        // Filet de sécurité si une notification se perd.
         using var muteGuard = new System.Timers.Timer(150) { AutoReset = true };
         muteGuard.Elapsed += (_, _) =>
         {
@@ -167,9 +205,12 @@ internal sealed class NetworkSender : IDisposable
                 if (!endpointVolume.Mute) endpointVolume.Mute = true;
                 sendScale = scaleWithMaster ? endpointVolume.MasterVolumeLevelScalar : 1f;
             }
-            catch { /* périphérique parti (déconnexion) : la capture s'arrêtera */ }
+            catch { }
         };
         muteGuard.Start();
+
+        _liveVolume = endpointVolume;
+        DeviceVolumeChanged?.Invoke(restoreVolume);
 
         try
         {
@@ -232,14 +273,24 @@ internal sealed class NetworkSender : IDisposable
         finally
         {
             _controlTarget = null;
+            _liveVolume = null;
             muteGuard.Stop();
-            try { endpointVolume.Mute = restoreMute; } catch { }
+            endpointVolume.OnVolumeNotification -= OnVolumeNotification;
+            try
+            {
+                endpointVolume.MasterVolumeLevelScalar = restoreVolume;
+                endpointVolume.Mute = restoreMute;
+            }
+            catch { }
         }
     }
 
     public void Dispose()
     {
         Stop();
+        // À la fermeture de l'app, laisser le temps à la boucle d'émission de
+        // rétablir les réglages audio sauvegardés (muet, volume).
+        try { _runTask?.Wait(1500); } catch { }
         _control.Dispose();
     }
 }

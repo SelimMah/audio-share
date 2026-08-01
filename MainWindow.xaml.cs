@@ -81,6 +81,15 @@ public partial class MainWindow : Window
         _net.RemoteBalance += (l, r) => Dispatcher.Invoke(() => SyncBalanceFromRemote(l, r));
         _net.Start();
         _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
+        // En émission, le curseur montre le vrai volume du périphérique :
+        // il suit aussi les touches physiques.
+        _sender.DeviceVolumeChanged += v => Dispatcher.Invoke(() =>
+        {
+            if (!_sender.IsRunning) return;
+            _syncingVolume = true;
+            VolumeSlider.Value = v;
+            _syncingVolume = false;
+        });
 
         StartWatcher();
 
@@ -198,7 +207,7 @@ public partial class MainWindow : Window
             NetworkStatus.Text = "en écoute";
             NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("LabelTertiary");
         }
-        VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving;
+        VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
     }
 
     /// <summary>
@@ -231,6 +240,7 @@ public partial class MainWindow : Window
         SendStatus.Text = _sender.State;
         SendStatus.Visibility = string.IsNullOrEmpty(_sender.State)
             ? Visibility.Collapsed : Visibility.Visible;
+        VolumeHeader.Text = _sender.IsRunning ? "SON ÉMIS" : "SON REÇU";
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
     }
 
@@ -239,7 +249,8 @@ public partial class MainWindow : Window
         PhoneAudio.Refresh();
         bool present = PhoneAudio.IsPresent;
         VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;
-        if (!present) return;
+        // En émission, le curseur appartient au volume du périphérique.
+        if (_sender.IsRunning || !present) return;
 
         float volume = PhoneAudio.Volume;
         if (Math.Abs(VolumeSlider.Value - volume) < 0.02) return;
@@ -253,10 +264,15 @@ public partial class MainWindow : Window
     {
         if (_syncingVolume || !IsLoaded) return;
         float v = (float)e.NewValue;
+        if (_sender.IsRunning)
+        {
+            // En émission, le curseur pilote le vrai volume du périphérique,
+            // comme les touches physiques : le niveau part dans le flux.
+            _sender.SetDeviceVolume(v);
+            return;
+        }
         PhoneAudio.Volume = v;
         _net.SetGain(v);
-        // En émission, le curseur pilote le volume joué chez le récepteur.
-        if (_sender.IsRunning) _sender.SendVolume(v);
     }
 
     // ---------- Balance ----------
