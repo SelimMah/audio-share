@@ -115,6 +115,13 @@ public partial class MainWindow : Window
         {
             AutostartToggle.IsChecked = IsAutostartEnabled();
             UpdateStatus.Text = $"Version installée : {Updater.CurrentVersion}";
+            // La page Réglages, plus courte, garde la taille de la page
+            // principale : pas de fenêtre qui rétrécit à la bascule.
+            MinHeight = ActualHeight;
+        }
+        else
+        {
+            MinHeight = 0;
         }
         SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         MainPanel.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
