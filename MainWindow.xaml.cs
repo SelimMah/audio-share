@@ -81,9 +81,10 @@ public partial class MainWindow : Window
         _net.RemoteBalance += (l, r) => Dispatcher.Invoke(() => SyncBalanceFromRemote(l, r));
         _net.Start();
         _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
-        // En émission, le curseur montre le vrai volume du périphérique :
-        // il suit aussi les touches physiques.
-        _sender.DeviceVolumeChanged += v => Dispatcher.Invoke(() =>
+        // En émission, le curseur montre le volume émis : il suit aussi les
+        // touches physiques (BeginInvoke : l'événement vient d'un rappel COM,
+        // ne pas y bloquer).
+        _sender.EmissionVolumeChanged += v => Dispatcher.BeginInvoke(() =>
         {
             if (!_sender.IsRunning) return;
             _syncingVolume = true;
@@ -266,9 +267,9 @@ public partial class MainWindow : Window
         float v = (float)e.NewValue;
         if (_sender.IsRunning)
         {
-            // En émission, le curseur pilote le vrai volume du périphérique,
-            // comme les touches physiques : le niveau part dans le flux.
-            _sender.SetDeviceVolume(v);
+            // En émission, le curseur pilote le volume émis (logiciel,
+            // appliqué aux échantillons envoyés).
+            _sender.SetEmissionVolume(v);
             return;
         }
         PhoneAudio.Volume = v;

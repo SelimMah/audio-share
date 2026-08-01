@@ -12,26 +12,32 @@ namespace AudioShare;
 /// Émission : capture tout le son de ce PC (boucle WASAPI sur la sortie par
 /// défaut), le convertit en PCM 16 bits et l'envoie à un autre Audio Share
 /// découvert sur le réseau local. Pendant l'émission :
-///  - les haut-parleurs locaux sont coupés (le prélèvement de la boucle se
-///    fait avant le muet), et re-coupés IMMÉDIATEMENT si les touches volume
-///    les rallument (notification du périphérique, pas un simple minuteur) ;
+///  - les haut-parleurs locaux sont coupés : muets ET épinglés à un volume
+///    plancher (2 %), pour qu'un démutage par la touche volume + ne laisse
+///    fuir qu'un son inaudible le temps de la re-coupure (notification du
+///    périphérique) ;
 ///  - les réglages audio (muet, volume) sont sauvegardés à l'activation et
 ///    rétablis à l'arrêt de l'émission ou à la fermeture de l'app ;
-///  - touches physiques ET curseur de l'app pilotent le même volume réel du
-///    périphérique, qui fixe le niveau ENVOYÉ : sur les périphériques à
-///    volume matériel le prélèvement ignore le volume, on l'applique donc
-///    nous-mêmes aux échantillons ;
+///  - le volume ÉMIS est purement logiciel, appliqué aux échantillons :
+///    le curseur de l'app le fixe directement, les touches physiques le
+///    déplacent via le delta mesuré par rapport au plancher ;
 ///  - la balance de l'app est relayée au récepteur (contrôles partagés)
 ///    par datagrammes UDP.
 /// </summary>
 internal sealed class NetworkSender : IDisposable
 {
+    // Volume réel auquel le périphérique est épinglé pendant l'émission : bas
+    // pour qu'une fuite au démutage soit inaudible, non nul pour que la touche
+    // volume − produise encore un changement détectable.
+    private const float PinnedVolume = 0.02f;
+
     private CancellationTokenSource? _cts;
     private Task? _runTask;
     private volatile string _state = "";
     private IPAddress? _controlTarget;
     private readonly UdpClient _control = new();
-    private NAudio.CoreAudioApi.AudioEndpointVolume? _liveVolume;
+    private float _sendVolume = 1f;   // volume émis, appliqué aux échantillons
+    private bool _volumeSeeded;
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
     public string State => _state;
@@ -40,14 +46,15 @@ internal sealed class NetworkSender : IDisposable
     public event Action? Changed;
 
     /// <summary>
-    /// Volume réel du périphérique de sortie pendant l'émission (touches
-    /// physiques ou curseur de l'app) — pour garder le curseur synchronisé.
+    /// Volume émis (touches physiques ou curseur de l'app) — pour garder le
+    /// curseur synchronisé. Levé sur un thread quelconque.
     /// </summary>
-    public event Action<float>? DeviceVolumeChanged;
+    public event Action<float>? EmissionVolumeChanged;
 
     public void Start()
     {
         Stop();
+        _volumeSeeded = false;
         _cts = new CancellationTokenSource();
         _runTask = Task.Run(() => RunAsync(_cts.Token));
     }
@@ -60,15 +67,13 @@ internal sealed class NetworkSender : IDisposable
     }
 
     /// <summary>
-    /// Pendant l'émission, le curseur de l'app pilote le vrai volume du
-    /// périphérique — le même que celui des touches physiques, qui fixe le
-    /// niveau envoyé au récepteur.
+    /// Fixe le volume émis, appliqué par l'app aux échantillons envoyés :
+    /// aucun périphérique dans la boucle, effet immédiat et garanti.
     /// </summary>
-    public void SetDeviceVolume(float volume)
+    public void SetEmissionVolume(float volume)
     {
-        var v = _liveVolume;
-        if (v == null) return;
-        try { v.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f); } catch { }
+        _sendVolume = Math.Clamp(volume, 0f, 1f);
+        EmissionVolumeChanged?.Invoke(_sendVolume);
     }
 
     // ---------- Contrôles partagés (balance vers le récepteur) ----------
@@ -163,34 +168,49 @@ internal sealed class NetworkSender : IDisposable
         var format = capture.WaveFormat;
         bool isFloat = format.BitsPerSample == 32; // le mix WASAPI est en float 32
 
-        // --- Coupure des haut-parleurs locaux, volume physique -> flux ---
+        // --- Coupure des haut-parleurs locaux, volume émis logiciel ---
         using var enumerator = new MMDeviceEnumerator();
         using var endpoint = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
         var endpointVolume = endpoint.AudioEndpointVolume;
-
-        // Volume matériel : le prélèvement ignore le curseur, on applique donc
-        // le volume nous-mêmes. Volume logiciel : il est déjà dans le signal.
-        bool scaleWithMaster =
-            (endpointVolume.HardwareSupport & EEndpointHardwareSupport.Volume) != 0;
-        float sendScale = scaleWithMaster ? endpointVolume.MasterVolumeLevelScalar : 1f;
 
         // Réglages audio sauvegardés à l'activation : muet ET volume sont
         // rétablis tels quels à l'arrêt de l'émission ou à la fermeture.
         bool restoreMute = endpointVolume.Mute;
         float restoreVolume = endpointVolume.MasterVolumeLevelScalar;
-        endpointVolume.Mute = true;
-        Log.Write($"Émission : haut-parleurs coupés (volume matériel : {scaleWithMaster})");
 
-        // La touche volume + de Windows RALLUME le son : la notification du
-        // périphérique permet de le recouper immédiatement (une garde
-        // périodique resterait audible), et de suivre le volume voulu.
+        // Le volume ÉMIS est purement logiciel (_sendVolume, appliqué aux
+        // échantillons) : le curseur volume réel du périphérique ne module pas
+        // le prélèvement de la boucle de façon fiable (l'heuristique
+        // HardwareSupport s'est révélée fausse selon les machines). Le
+        // périphérique, lui, est muet ET épinglé à un volume plancher : si la
+        // touche volume + le rallume, la fuite se fait à 2 % — inaudible —
+        // le temps que la notification recoupe.
+        if (!_volumeSeeded)
+        {
+            // On démarre au volume que l'utilisateur avait ; les reconnexions
+            // suivantes gardent le volume ajusté pendant l'émission.
+            _sendVolume = Math.Clamp(restoreVolume, 0f, 1f);
+            _volumeSeeded = true;
+        }
+        endpointVolume.Mute = true;
+        endpointVolume.MasterVolumeLevelScalar = PinnedVolume;
+        Log.Write($"Émission : haut-parleurs coupés, volume émis {_sendVolume:0.00}");
+
+        // Les touches physiques déplacent le volume réel PAR RAPPORT au
+        // plancher : ce delta est la commande de l'utilisateur (+/−), appliqué
+        // au volume émis, puis le périphérique est ré-épinglé. Nos propres
+        // remises au plancher donnent un delta nul et sont donc ignorées.
         void OnVolumeNotification(NAudio.CoreAudioApi.AudioVolumeNotificationData data)
         {
             try
             {
                 if (!data.Muted) endpointVolume.Mute = true;
-                sendScale = scaleWithMaster ? data.MasterVolume : 1f;
-                DeviceVolumeChanged?.Invoke(data.MasterVolume);
+                float delta = data.MasterVolume - PinnedVolume;
+                if (Math.Abs(delta) > 0.001f)
+                {
+                    SetEmissionVolume(_sendVolume + delta);
+                    endpointVolume.MasterVolumeLevelScalar = PinnedVolume;
+                }
             }
             catch { /* périphérique parti (déconnexion) : la capture s'arrêtera */ }
         }
@@ -203,14 +223,12 @@ internal sealed class NetworkSender : IDisposable
             try
             {
                 if (!endpointVolume.Mute) endpointVolume.Mute = true;
-                sendScale = scaleWithMaster ? endpointVolume.MasterVolumeLevelScalar : 1f;
             }
             catch { }
         };
         muteGuard.Start();
 
-        _liveVolume = endpointVolume;
-        DeviceVolumeChanged?.Invoke(restoreVolume);
+        EmissionVolumeChanged?.Invoke(_sendVolume);
 
         try
         {
@@ -232,7 +250,7 @@ internal sealed class NetworkSender : IDisposable
                 try
                 {
                     byte[] payload;
-                    float scale = sendScale;
+                    float scale = _sendVolume;
                     if (isFloat)
                     {
                         // float 32 -> PCM 16 bits : moitié moins de bande passante
@@ -273,7 +291,6 @@ internal sealed class NetworkSender : IDisposable
         finally
         {
             _controlTarget = null;
-            _liveVolume = null;
             muteGuard.Stop();
             endpointVolume.OnVolumeNotification -= OnVolumeNotification;
             try
