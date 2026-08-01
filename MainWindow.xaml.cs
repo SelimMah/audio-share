@@ -33,6 +33,13 @@ public class BtDevice : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
+/// <summary>Entrée du choix de sortie audio : null = sortie par défaut.</summary>
+public class OutputChoice
+{
+    public string? Id { get; init; }
+    public string Name { get; init; } = "";
+}
+
 public partial class MainWindow : Window
 {
     private readonly ObservableCollection<BtDevice> _devices = new();
@@ -47,8 +54,11 @@ public partial class MainWindow : Window
     private bool _quitting;
     private bool _trayHintShown;
     private bool _syncingVolume;
+    private bool _syncingOutput;
     private VolumeKeyHook? _volumeKeys;
     private VolumeOsd? _osd;
+    private DispatcherTimer? _vuTimer;
+    private float _vuShown;
 
     public MainWindow()
     {
@@ -106,6 +116,16 @@ public partial class MainWindow : Window
 
         StartWatcher();
 
+        // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
+        // passe sa vie cachée, pas de réveil 20 fois par seconde pour rien.
+        _vuTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        _vuTimer.Tick += (_, _) => UpdateVu();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) _vuTimer.Start();
+            else { _vuTimer.Stop(); _vuShown = 0; }
+        };
+
         Loaded += (_, _) =>
         {
             AnimateIn();
@@ -154,6 +174,11 @@ public partial class MainWindow : Window
         LanguageLabel.Text = Loc.T("Language", "Langue");
         UpdateLabel.Text = Loc.T("Updates", "Mise à jour");
         CheckUpdateButton.Content = Loc.T("Check", "Vérifier");
+        OutputLabel.Text = Loc.T("Received audio output", "Sortie du son reçu");
+        OutputRow.ToolTip = Loc.T(
+            "Applies to audio received from the network. Bluetooth phone audio always follows Windows' default output.",
+            "S'applique au son reçu par le réseau. Le son Bluetooth du téléphone suit toujours la sortie par défaut de Windows.");
+        if (SettingsPanel.Visibility == Visibility.Visible) PopulateOutputCombo();
 
         EmptyHint.Text = Loc.T("No paired phone — pair one in Windows Bluetooth settings.",
                                "Aucun téléphone appairé — appaire-le dans les réglages Bluetooth de Windows.");
@@ -194,6 +219,7 @@ public partial class MainWindow : Window
         if (show)
         {
             AutostartToggle.IsChecked = IsAutostartEnabled();
+            PopulateOutputCombo();
             _syncingLanguage = true;
             LangEnglish.IsChecked = !Loc.French;
             LangFrench.IsChecked = Loc.French;
@@ -244,6 +270,45 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Sorties actives + « Périphérique par défaut » en tête. Relu à chaque
+    /// ouverture des Réglages : la liste suit les branchements sans watcher.
+    /// </summary>
+    private void PopulateOutputCombo()
+    {
+        _syncingOutput = true;
+        var items = new List<OutputChoice>
+        {
+            new() { Id = null, Name = Loc.T("Default device", "Périphérique par défaut") },
+        };
+        try
+        {
+            using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            foreach (var device in enumerator.EnumerateAudioEndPoints(
+                         NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.DeviceState.Active))
+            {
+                items.Add(new OutputChoice { Id = device.ID, Name = device.FriendlyName });
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Write($"Réglages : énumération des sorties impossible ({ex.Message})");
+        }
+        OutputCombo.ItemsSource = items;
+        var saved = Prefs.OutputDeviceId;
+        OutputCombo.SelectedItem = items.FirstOrDefault(i => i.Id == saved) ?? items[0];
+        _syncingOutput = false;
+    }
+
+    private void Output_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || _syncingOutput) return;
+        if (OutputCombo.SelectedItem is not OutputChoice choice) return;
+        Prefs.OutputDeviceId = choice.Id;
+        // Prend effet immédiatement si un flux réseau joue.
+        _net.ApplyOutputDevice();
+    }
+
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         CheckUpdateButton.IsEnabled = false;
@@ -267,7 +332,10 @@ public partial class MainWindow : Window
         // des appareils Bluetooth juste au-dessus.
         if (_net.IsReceiving)
         {
-            NetworkStatus.Text = $"🎵 {_net.SenderName}";
+            // Latence du tampon en petit : la santé du lien d'un coup d'œil.
+            NetworkStatus.Text = _net.LatencyMs is int ms
+                ? $"🎵 {_net.SenderName} · {ms} ms"
+                : $"🎵 {_net.SenderName}";
             NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("Green");
         }
         else
@@ -338,8 +406,34 @@ public partial class MainWindow : Window
         _osd.ShowVolume(volume);
     }
 
+    // ---------- Vumètre ----------
+
+    /// <summary>
+    /// Trait de 2 px sous le curseur : attaque immédiate, retombée douce.
+    /// Échelle en racine carrée pour rester lisible aux niveaux modérés.
+    /// </summary>
+    private void UpdateVu()
+    {
+        float level;
+        if (_sender.IsRunning) level = _sender.Level;
+        else if (_net.IsReceiving) level = _net.OutputLevel;
+        else if (PhoneAudio.IsPresent) level = PhoneAudio.Peak;
+        else
+        {
+            VuTrack.Visibility = Visibility.Collapsed;
+            _vuShown = 0f;
+            return;
+        }
+
+        VuTrack.Visibility = Visibility.Visible;
+        _vuShown = Math.Max(Math.Min(1f, level), _vuShown * 0.86f);
+        VuBar.Width = VuTrack.ActualWidth * Math.Sqrt(_vuShown);
+    }
+
     private void PollPhoneSession()
     {
+        // La latence affichée à côté du nom de l'émetteur vit au même rythme.
+        if (_net.IsReceiving && IsVisible) UpdateNetworkUi();
         PhoneAudio.Refresh();
         bool present = PhoneAudio.IsPresent;
         VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;

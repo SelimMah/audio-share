@@ -45,6 +45,16 @@ internal sealed class NetworkSender : IDisposable
     public bool IsRunning => _cts is { IsCancellationRequested: false };
     public string State => _state;
 
+    private volatile float _level;
+    private long _levelAt;
+
+    /// <summary>
+    /// Crête du son émis (0..1), pour le vumètre. La boucle WASAPI cesse de
+    /// livrer des blocs quand rien ne joue : une valeur trop vieille vaut 0.
+    /// </summary>
+    public float Level => IsRunning && Environment.TickCount64 - Interlocked.Read(ref _levelAt) < 250
+        ? _level : 0f;
+
     /// <summary>Levé sur un thread quelconque à chaque changement d'état.</summary>
     public event Action? Changed;
 
@@ -284,6 +294,7 @@ internal sealed class NetworkSender : IDisposable
                 {
                     byte[] payload;
                     float scale = _sendVolume;
+                    float peak = 0f;
                     if (isFloat)
                     {
                         // float 32 -> PCM 16 bits : moitié moins de bande passante
@@ -292,6 +303,8 @@ internal sealed class NetworkSender : IDisposable
                         for (int i = 0; i < samples; i++)
                         {
                             float v = BitConverter.ToSingle(e.Buffer, i * 4) * scale;
+                            float a = Math.Abs(v);
+                            if (a > peak) peak = a;
                             short s = (short)Math.Clamp((int)(v * 32767f), short.MinValue, short.MaxValue);
                             payload[i * 2] = (byte)s;
                             payload[i * 2 + 1] = (byte)(s >> 8);
@@ -301,7 +314,14 @@ internal sealed class NetworkSender : IDisposable
                     {
                         payload = new byte[e.BytesRecorded];
                         Array.Copy(e.Buffer, payload, e.BytesRecorded);
+                        for (int i = 0; i + 1 < payload.Length; i += 2)
+                        {
+                            float a = Math.Abs(BitConverter.ToInt16(payload, i) / 32768f);
+                            if (a > peak) peak = a;
+                        }
                     }
+                    _level = Math.Min(1f, peak);
+                    Interlocked.Exchange(ref _levelAt, Environment.TickCount64);
                     net.Write(payload, 0, payload.Length);
                 }
                 catch (Exception ex) { done.TrySetException(ex); }

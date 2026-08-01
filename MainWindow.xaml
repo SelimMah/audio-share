@@ -71,6 +71,15 @@
                                 </Border>
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}"/>
+                            <Grid x:Name="OutputRow" Height="44">
+                                <TextBlock x:Name="OutputLabel" Text="Received audio output"
+                                           Style="{StaticResource RowLabel}"/>
+                                <ComboBox x:Name="OutputCombo" Style="{StaticResource PlainCombo}"
+                                          MaxWidth="180" DisplayMemberPath="Name"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          SelectionChanged="Output_Changed"/>
+                            </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}"/>
                             <Grid Height="44">
                                 <TextBlock x:Name="UpdateLabel" Text="Updates" Style="{StaticResource RowLabel}"/>
                                 <Button x:Name="CheckUpdateButton" Content="Check"
@@ -178,22 +187,33 @@
                      curseur pilote alors le volume émis. -->
                 <TextBlock x:Name="VolumeHeader" Text="RECEIVED AUDIO" Style="{StaticResource SectionHeader}"/>
                 <Border Style="{StaticResource Card}" Padding="12,10,16,10" Margin="0,0,0,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Button x:Name="MuteButton" Grid.Column="0" Content="&#xE995;"
-                                Width="32" Height="32" FontSize="15"
-                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                Style="{StaticResource ChromeButton}"
-                                VerticalAlignment="Center" Margin="0,0,10,0"
-                                Click="Mute_Click"/>
-                        <Slider x:Name="VolumeSlider" Grid.Column="1"
-                                Style="{StaticResource IosSlider}"
-                                IsMoveToPointEnabled="True"
-                                ValueChanged="Volume_Changed"/>
-                    </Grid>
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="MuteButton" Grid.Column="0" Content="&#xE995;"
+                                    Width="32" Height="32" FontSize="15"
+                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                    Style="{StaticResource ChromeButton}"
+                                    VerticalAlignment="Center" Margin="0,0,10,0"
+                                    Click="Mute_Click"/>
+                            <Slider x:Name="VolumeSlider" Grid.Column="1"
+                                    Style="{StaticResource IosSlider}"
+                                    IsMoveToPointEnabled="True"
+                                    ValueChanged="Volume_Changed"/>
+                        </Grid>
+                        <!-- Vumètre discret : un trait de 2 px qui suit le niveau
+                             du son (reçu ou émis), visible seulement en activité. -->
+                        <Grid x:Name="VuTrack" Height="2" Margin="42,5,4,0"
+                              Visibility="Collapsed">
+                            <Border CornerRadius="1" Background="#12FFFFFF"/>
+                            <Border x:Name="VuBar" CornerRadius="1" Width="0"
+                                    Background="{StaticResource Accent}" Opacity="0.55"
+                                    HorizontalAlignment="Left"/>
+                        </Grid>
+                    </StackPanel>
                 </Border>
                 <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
                         Margin="0,0,0,2"

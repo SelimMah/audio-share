@@ -141,6 +141,22 @@ internal static class PhoneAudio
         return _comField?.GetValue(session) as IChannelAudioVolume;
     }
 
+    /// <summary>
+    /// Crête instantanée de la session du téléphone (0..1), pour le vumètre.
+    /// Le flux A2DP n'est pas capturable, mais son compteur de niveau l'est.
+    /// </summary>
+    public static float Peak
+    {
+        get
+        {
+            lock (Gate)
+            {
+                try { return _session?.AudioMeterInformation.MasterPeakValue ?? 0f; }
+                catch { return 0f; }
+            }
+        }
+    }
+
     // ---------- Volume et sourdine ----------
 
     public static float Volume

@@ -21,25 +21,106 @@ internal sealed class VolumeBalanceProvider : ISampleProvider
     public volatile float Right = 1f;
     public volatile float Gain = 1f;
 
+    /// <summary>Crête du dernier bloc rendu (0..1), pour le vumètre.</summary>
+    public volatile float Peak;
+
     public int Read(float[] buffer, int offset, int count)
     {
         int read = _source.Read(buffer, offset, count);
         float g = Gain, l = Left * g, r = Right * g;
 
-        if (WaveFormat.Channels == 2)
+        if (WaveFormat.Channels == 2 && (l != 1f || r != 1f))
         {
-            if (l == 1f && r == 1f) return read;
             for (int i = 0; i + 1 < read; i += 2)
             {
                 buffer[offset + i] *= l;
                 buffer[offset + i + 1] *= r;
             }
         }
-        else if (g != 1f)
+        else if (WaveFormat.Channels != 2 && g != 1f)
         {
             for (int i = 0; i < read; i++) buffer[offset + i] *= g;
         }
+
+        float peak = 0f;
+        for (int i = 0; i < read; i++)
+        {
+            float a = Math.Abs(buffer[offset + i]);
+            if (a > peak) peak = a;
+        }
+        Peak = peak;
         return read;
+    }
+}
+
+/// <summary>
+/// Rattrapage de dérive d'horloge : les horloges audio des deux PC ne battent
+/// jamais exactement à la même cadence, donc le tampon de réception se remplit
+/// ou se vide lentement — latence qui grimpe puis purge brutale, ou coupures.
+/// On rééchantillonne très légèrement (±0,5 % max, inaudible) par interpolation
+/// linéaire pour maintenir le tampon autour de la latence cible, sans jamais
+/// couper ni sauter.
+/// </summary>
+internal sealed class DriftCorrector : ISampleProvider
+{
+    private readonly ISampleProvider _source;
+    private readonly int _channels;
+    private readonly float[] _cur, _next;   // deux trames encadrant la position
+    private readonly float[] _block;        // lecture source par blocs
+    private int _blockCount, _blockPos;
+    private double _pos = 1.0;              // force le chargement initial
+
+    /// <summary>Trames source consommées par trame produite (1 ± 0,005).</summary>
+    public volatile float Ratio = 1f;
+
+    public WaveFormat WaveFormat => _source.WaveFormat;
+
+    public DriftCorrector(ISampleProvider source)
+    {
+        _source = source;
+        _channels = source.WaveFormat.Channels;
+        _cur = new float[_channels];
+        _next = new float[_channels];
+        _block = new float[4096 - 4096 % _channels];
+    }
+
+    private void LoadNextFrame()
+    {
+        Array.Copy(_next, _cur, _channels);
+        if (_blockPos >= _blockCount)
+        {
+            // BufferedWaveProvider (ReadFully) comble toujours en silence :
+            // jamais de lecture partielle, mais on se protège quand même.
+            _blockCount = _source.Read(_block, 0, _block.Length);
+            _blockPos = 0;
+            if (_blockCount < _channels)
+            {
+                Array.Clear(_block, 0, _channels);
+                _blockCount = _channels;
+            }
+        }
+        Array.Copy(_block, _blockPos, _next, 0, _channels);
+        _blockPos += _channels;
+    }
+
+    public int Read(float[] buffer, int offset, int count)
+    {
+        int frames = count / _channels;
+        float ratio = Ratio;
+        for (int f = 0; f < frames; f++)
+        {
+            while (_pos >= 1.0)
+            {
+                _pos -= 1.0;
+                LoadNextFrame();
+            }
+            float t = (float)_pos;
+            int o = offset + f * _channels;
+            for (int c = 0; c < _channels; c++)
+                buffer[o + c] = _cur[c] + (_next[c] - _cur[c]) * t;
+            _pos += ratio;
+        }
+        return frames * _channels;
     }
 }
 
@@ -54,19 +135,39 @@ internal sealed class NetworkReceiver : IDisposable
     public const int DiscoveryPort = 42501;
     public const int StreamPort = 42502;
 
+    // Latence cible du tampon de réception : assez pour absorber la gigue
+    // réseau, assez peu pour rester regardable sur une vidéo. Le correcteur
+    // de dérive maintient le tampon autour de cette valeur.
+    private const int TargetLatencyMs = 120;
+
+    // Au-delà : le réseau s'est figé puis a vidé sa rafale d'un coup — on
+    // resynchronise franchement plutôt que de rattraper 0,5 % par 0,5 %.
+    private const int ResyncLatencyMs = 500;
+
     private UdpClient? _udp;
     private TcpListener? _tcp;
     private CancellationTokenSource? _cts;
     private WasapiOut? _output;
     private BufferedWaveProvider? _buffer;
+    private DriftCorrector? _drift;
     private VolumeBalanceProvider? _vb;
     private volatile string? _senderName;
     private IPAddress? _senderAddress;
+
+    // La page Réglages peut changer la sortie pendant qu'un flux joue.
+    private readonly object _playLock = new();
 
     private float _left = 1f, _right = 1f;
 
     public string? SenderName => _senderName;
     public bool IsReceiving => _senderName != null;
+
+    /// <summary>Latence actuelle du tampon (ms), pour affichage.</summary>
+    public int? LatencyMs => IsReceiving && _buffer is { } b
+        ? (int)b.BufferedDuration.TotalMilliseconds : null;
+
+    /// <summary>Crête du son rendu (0..1), pour le vumètre.</summary>
+    public float OutputLevel => _vb?.Peak ?? 0f;
 
     /// <summary>Levé sur un thread quelconque quand un émetteur arrive ou part.</summary>
     public event Action? Changed;
@@ -193,18 +294,31 @@ internal sealed class NetworkReceiver : IDisposable
             _senderAddress = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
             Log.Write($"Réseau : émetteur « {_senderName} » connecté ({rate} Hz, {channels} canaux, {bits} bits)");
 
-            _buffer = new BufferedWaveProvider(new WaveFormat(rate, bits, channels))
+            var format = new WaveFormat(rate, bits, channels);
+            var buffer = new BufferedWaveProvider(format)
             {
                 BufferDuration = TimeSpan.FromSeconds(2),
                 DiscardOnBufferOverflow = true,
             };
-            _vb = new VolumeBalanceProvider(_buffer.ToSampleProvider())
+            // Coussin initial de silence : la lecture démarre tout de suite
+            // avec la latence cible déjà en réserve, prête à absorber la gigue.
+            var cushion = new byte[format.AverageBytesPerSecond * TargetLatencyMs / 1000
+                                   / format.BlockAlign * format.BlockAlign];
+            buffer.AddSamples(cushion, 0, cushion.Length);
+
+            var drift = new DriftCorrector(buffer.ToSampleProvider());
+            _buffer = buffer;
+            _drift = drift;
+            _vb = new VolumeBalanceProvider(drift)
             {
                 Left = _left, Right = _right,
             };
-            _output = new WasapiOut(AudioClientShareMode.Shared, 60);
-            _output.Init(_vb);
-            _output.Play();
+            lock (_playLock)
+            {
+                _output = CreateOutput();
+                _output.Init(_vb);
+                _output.Play();
+            }
             Changed?.Invoke();
 
             var data = new byte[32 * 1024];
@@ -213,12 +327,21 @@ internal sealed class NetworkReceiver : IDisposable
                 int n = await stream.ReadAsync(data, ct);
                 if (n <= 0) break;
 
-                // Anti-dérive : si le retard s'accumule (réseau saturé, reprise
-                // après pause), on repart du direct plutôt que d'empiler.
-                if (_buffer.BufferedDuration > TimeSpan.FromMilliseconds(300))
-                    _buffer.ClearBuffer();
+                double buffered = buffer.BufferedDuration.TotalMilliseconds;
+                if (buffered > ResyncLatencyMs)
+                {
+                    // Rafale après un gel réseau : on repart du direct en
+                    // reconstituant le coussin cible d'un coup.
+                    buffer.ClearBuffer();
+                    buffer.AddSamples(cushion, 0, cushion.Length);
+                    buffered = TargetLatencyMs;
+                }
+                buffer.AddSamples(data, 0, n);
 
-                _buffer.AddSamples(data, 0, n);
+                // Asservissement de la dérive d'horloge : écart de latence
+                // replié en vitesse de lecture, ±0,5 % max (inaudible).
+                drift.Ratio = 1f + Math.Clamp(
+                    (float)(buffered - TargetLatencyMs) / 4000f, -0.005f, 0.005f);
             }
         }
         catch (OperationCanceledException) { }
@@ -243,13 +366,66 @@ internal sealed class NetworkReceiver : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sortie choisie dans les Réglages (Prefs), sinon la sortie par défaut.
+    /// Un périphérique disparu (débranché) retombe sur la sortie par défaut.
+    /// </summary>
+    private static WasapiOut CreateOutput()
+    {
+        var id = Prefs.OutputDeviceId;
+        if (!string.IsNullOrEmpty(id))
+        {
+            try
+            {
+                using var enumerator = new MMDeviceEnumerator();
+                var device = enumerator.GetDevice(id);
+                if (device.State == DeviceState.Active)
+                    return new WasapiOut(device, AudioClientShareMode.Shared, true, 60);
+            }
+            catch (Exception ex)
+            {
+                Log.Write($"Réseau : sortie choisie indisponible, sortie par défaut ({ex.Message})");
+            }
+        }
+        return new WasapiOut(AudioClientShareMode.Shared, 60);
+    }
+
+    /// <summary>
+    /// Rebranche la lecture en cours sur la sortie des Réglages : seule la
+    /// sortie WASAPI est recréée, le tampon et le flux réseau continuent.
+    /// </summary>
+    public void ApplyOutputDevice()
+    {
+        lock (_playLock)
+        {
+            if (_vb == null) return;
+            try { _output?.Stop(); } catch { }
+            _output?.Dispose();
+            try
+            {
+                _output = CreateOutput();
+                _output.Init(_vb);
+                _output.Play();
+            }
+            catch (Exception ex)
+            {
+                Log.Write($"Réseau : changement de sortie impossible ({ex.Message})");
+                _output = null;
+            }
+        }
+    }
+
     private void StopPlayback()
     {
-        try { _output?.Stop(); } catch { }
-        _output?.Dispose();
-        _output = null;
-        _buffer = null;
-        _vb = null;
+        lock (_playLock)
+        {
+            try { _output?.Stop(); } catch { }
+            _output?.Dispose();
+            _output = null;
+            _buffer = null;
+            _drift = null;
+            _vb = null;
+        }
     }
 
     public void Dispose()
