@@ -47,11 +47,12 @@ internal static class Updater
             if (!IsInstalledCopy)
             {
                 Log.Write("MàJ : copie de développement, vérification ignorée");
-                if (verbose) notify("Copie de développement — mise à jour désactivée.");
+                if (verbose) notify(Loc.T("Development copy — updates disabled.",
+                                          "Copie de développement — mise à jour désactivée."));
                 return false;
             }
 
-            if (verbose) notify("Vérification…");
+            if (verbose) notify(Loc.T("Checking…", "Vérification…"));
 
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
             http.DefaultRequestHeaders.UserAgent.ParseAdd("AudioShare-Updater");
@@ -66,7 +67,8 @@ internal static class Updater
             if (latest <= current)
             {
                 Log.Write($"MàJ : à jour (installée {current}, dernière {latest})");
-                if (verbose) notify($"L'app est à jour (version {CurrentVersion}).");
+                if (verbose) notify(Loc.T($"The app is up to date (version {CurrentVersion}).",
+                                          $"L'app est à jour (version {CurrentVersion})."));
                 return false;
             }
 
@@ -83,19 +85,22 @@ internal static class Updater
             if (url == null)
             {
                 Log.Write($"MàJ : release {latest} sans installateur, ignorée");
-                if (verbose) notify("La dernière release ne contient pas d'installateur.");
+                if (verbose) notify(Loc.T("The latest release has no installer.",
+                                          "La dernière release ne contient pas d'installateur."));
                 return false;
             }
 
             Log.Write($"MàJ : {current} -> {latest}, téléchargement…");
-            notify($"Mise à jour vers la version {latest} — téléchargement en cours…");
+            notify(Loc.T($"Updating to version {latest} — downloading…",
+                         $"Mise à jour vers la version {latest} — téléchargement…"));
 
             string setupPath = Path.Combine(Path.GetTempPath(), "AudioShare-Setup.exe");
             await using (var download = await http.GetStreamAsync(url))
             await using (var file = File.Create(setupPath))
                 await download.CopyToAsync(file);
 
-            notify("Installation de la mise à jour — l'app va redémarrer.");
+            notify(Loc.T("Installing the update — the app will restart.",
+                         "Installation de la mise à jour — l'app va redémarrer."));
             Log.Write("MàJ : lancement de l'installateur silencieux");
 
             // L'installateur ferme l'app (taskkill), installe, puis la relance.
@@ -109,7 +114,8 @@ internal static class Updater
         {
             // Hors ligne, API indisponible… : l'app démarre normalement.
             Log.Write($"MàJ : vérification impossible ({ex.Message})");
-            if (verbose) notify("Vérification impossible — regarde ta connexion.");
+            if (verbose) notify(Loc.T("Could not check for updates — check your connection.",
+                                      "Vérification impossible — regarde ta connexion."));
             return false;
         }
     }

@@ -39,11 +39,11 @@
 
                 <!-- Page Réglages : remplace la page principale -->
                 <StackPanel x:Name="SettingsPanel" Visibility="Collapsed">
-                    <TextBlock Text="GÉNÉRAL" Style="{StaticResource SectionHeader}"/>
+                    <TextBlock x:Name="GeneralHeader" Text="GENERAL" Style="{StaticResource SectionHeader}"/>
                     <Border Style="{StaticResource Card}" Padding="16,4">
                         <StackPanel>
                             <Grid Height="44">
-                                <TextBlock Text="Ouvrir au démarrage de Windows"
+                                <TextBlock x:Name="AutostartLabel" Text="Launch at Windows startup"
                                            Style="{StaticResource RowLabel}"/>
                                 <CheckBox x:Name="AutostartToggle" Style="{StaticResource Switch}"
                                           HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -51,8 +51,29 @@
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}"/>
                             <Grid Height="44">
-                                <TextBlock Text="Mise à jour" Style="{StaticResource RowLabel}"/>
-                                <Button x:Name="CheckUpdateButton" Content="Vérifier"
+                                <TextBlock x:Name="LanguageLabel" Text="Language"
+                                           Style="{StaticResource RowLabel}"/>
+                                <Border CornerRadius="9" Background="{StaticResource SegmentBed}"
+                                        Width="170" Height="30"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton x:Name="LangEnglish" Grid.Column="0" Content="English"
+                                                     GroupName="Lang" Style="{StaticResource Segment}"
+                                                     Checked="Language_Checked"/>
+                                        <RadioButton x:Name="LangFrench" Grid.Column="1" Content="Français"
+                                                     GroupName="Lang" Style="{StaticResource Segment}"
+                                                     Checked="Language_Checked"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}"/>
+                            <Grid Height="44">
+                                <TextBlock x:Name="UpdateLabel" Text="Updates" Style="{StaticResource RowLabel}"/>
+                                <Button x:Name="CheckUpdateButton" Content="Check"
                                         Width="94" Height="30" FontSize="12.5"
                                         Style="{StaticResource TintedButton}"
                                         HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -110,13 +131,13 @@
                                    FontFamily="{StaticResource Body}" FontSize="12.5"
                                    Foreground="{StaticResource LabelSecondary}"
                                    Visibility="Collapsed"
-                                   Text="Aucun téléphone appairé — utilise le lien ci-dessous."/>
+                                   Text="No paired phone — pair one in Windows Bluetooth settings."/>
 
                         <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
 
                         <!-- Réception réseau : toujours active, état à droite -->
-                        <Grid Margin="10,8"
-                              ToolTip="Un autre PC avec Audio Share peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.">
+                        <Grid x:Name="NetworkRow" Margin="10,8"
+                              ToolTip="Another PC running Audio Share can stream its audio here: turn on “Send” over there, the connection is automatic.">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="26"/>
                                 <ColumnDefinition Width="*"/>
@@ -126,20 +147,20 @@
                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        Foreground="{StaticResource LabelSecondary}"
                                        HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" Text="Réseau local"
+                            <TextBlock Grid.Column="1" x:Name="NetworkLabel" Text="Local network"
                                        FontFamily="{StaticResource Body}" FontSize="14"
                                        Foreground="{StaticResource Label}" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" x:Name="NetworkStatus"
                                        FontFamily="{StaticResource Body}" FontSize="12"
                                        Foreground="{StaticResource LabelTertiary}"
-                                       VerticalAlignment="Center" Text="en écoute"/>
+                                       VerticalAlignment="Center" Text="listening"/>
                         </Grid>
 
                         <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
 
                         <!-- Émission vers un autre PC -->
                         <Grid Margin="10,5" Height="34">
-                            <TextBlock Text="Envoyer le son de ce PC" Style="{StaticResource RowLabel}"/>
+                            <TextBlock x:Name="SendLabel" Text="Send this PC's audio" Style="{StaticResource RowLabel}"/>
                             <CheckBox x:Name="SendToggle" Style="{StaticResource Switch}"
                                       HorizontalAlignment="Right" VerticalAlignment="Center"
                                       Checked="SendToggle_Changed" Unchecked="SendToggle_Changed"/>
@@ -152,62 +173,48 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Margin="0,9,0,0" HorizontalAlignment="Center">
-                    <Hyperlink Click="OpenSettings_Click" TextDecorations="None"
-                               Foreground="{StaticResource Accent}">
-                        <Run Text="Ouvrir l'appairage Bluetooth" FontFamily="Segoe UI Variable Text"
-                             FontSize="12.5"/>
-                    </Hyperlink>
-                </TextBlock>
-
                 <!-- Volume et balance du son reçu (Bluetooth ou réseau) ; la
-                     section devient « SON ÉMIS » pendant l'émission et le
-                     curseur pilote alors le vrai volume du périphérique. -->
-                <TextBlock x:Name="VolumeHeader" Text="SON REÇU" Style="{StaticResource SectionHeader}"/>
-                <Border Style="{StaticResource Card}" Padding="16,14" Margin="0,0,0,10">
+                     section devient « SENT AUDIO » pendant l'émission et le
+                     curseur pilote alors le volume émis. -->
+                <TextBlock x:Name="VolumeHeader" Text="RECEIVED AUDIO" Style="{StaticResource SectionHeader}"/>
+                <Border Style="{StaticResource Card}" Padding="12,10,16,10" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="&#xE993;" FontSize="12"
-                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   Foreground="{StaticResource LabelTertiary}"
-                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <Button x:Name="MuteButton" Grid.Column="0" Content="&#xE995;"
+                                Width="32" Height="32" FontSize="15"
+                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                Style="{StaticResource ChromeButton}"
+                                VerticalAlignment="Center" Margin="0,0,10,0"
+                                Click="Mute_Click"/>
                         <Slider x:Name="VolumeSlider" Grid.Column="1"
                                 Style="{StaticResource IosSlider}"
+                                IsMoveToPointEnabled="True"
                                 ValueChanged="Volume_Changed"/>
-                        <TextBlock Grid.Column="2" Text="&#xE995;" FontSize="12"
-                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   Foreground="{StaticResource LabelTertiary}"
-                                   VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </Grid>
                 </Border>
-                <Border CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
-                        ToolTip="N'agit que sur le son reçu (téléphone ou autre PC) — jamais sur les sons de ce PC.">
+                <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
+                        Margin="0,0,0,2"
+                        ToolTip="Only affects the received audio (phone or other PC) — never this PC's own sounds.">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <RadioButton x:Name="BalanceLeft" Grid.Column="0" Content="Gauche"
+                        <RadioButton x:Name="BalanceLeft" Grid.Column="0" Content="Left"
                                      GroupName="Bal" Style="{StaticResource Segment}"
                                      Checked="Balance_Checked"/>
-                        <RadioButton x:Name="BalanceStereo" Grid.Column="1" Content="Stéréo"
+                        <RadioButton x:Name="BalanceStereo" Grid.Column="1" Content="Stereo"
                                      GroupName="Bal" Style="{StaticResource Segment}" IsChecked="True"
                                      Checked="Balance_Checked"/>
-                        <RadioButton x:Name="BalanceRight" Grid.Column="2" Content="Droite"
+                        <RadioButton x:Name="BalanceRight" Grid.Column="2" Content="Right"
                                      GroupName="Bal" Style="{StaticResource Segment}"
                                      Checked="Balance_Checked"/>
                     </Grid>
                 </Border>
-
-                <TextBlock x:Name="StatusText" Margin="4,12,4,0" TextWrapping="Wrap"
-                           FontFamily="{StaticResource Body}" FontSize="12"
-                           Foreground="{StaticResource LabelTertiary}" LineHeight="16"
-                           Text="Clique sur un appareil pour activer la réception."/>
 
                 </StackPanel>
             </StackPanel>

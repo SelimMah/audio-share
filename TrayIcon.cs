@@ -12,7 +12,7 @@ namespace AudioShare;
 internal sealed class TrayIcon : IDisposable
 {
     private readonly NotifyIcon _icon;
-    private readonly ToolStripMenuItem _left, _stereo, _right, _show;
+    private readonly ToolStripMenuItem _left, _stereo, _right, _show, _quit;
     private Icon? _current;
 
     public event Action? ShowRequested;
@@ -23,25 +23,26 @@ internal sealed class TrayIcon : IDisposable
     {
         var menu = new ContextMenuStrip { ShowImageMargin = false };
 
-        _show = new ToolStripMenuItem("Afficher Audio Share", null, (_, _) => ShowRequested?.Invoke())
+        _show = new ToolStripMenuItem("", null, (_, _) => ShowRequested?.Invoke())
         {
             Font = new Font(SystemFonts.MenuFont!, FontStyle.Bold),
         };
         menu.Items.Add(_show);
         menu.Items.Add(new ToolStripSeparator());
 
-        _left = new ToolStripMenuItem("Gauche", null, (_, _) => Choose(1f, 0f));
-        _stereo = new ToolStripMenuItem("Stéréo", null, (_, _) => Choose(1f, 1f)) { Checked = true };
-        _right = new ToolStripMenuItem("Droite", null, (_, _) => Choose(0f, 1f));
+        _left = new ToolStripMenuItem("", null, (_, _) => Choose(1f, 0f));
+        _stereo = new ToolStripMenuItem("", null, (_, _) => Choose(1f, 1f)) { Checked = true };
+        _right = new ToolStripMenuItem("", null, (_, _) => Choose(0f, 1f));
         menu.Items.Add(_left);
         menu.Items.Add(_stereo);
         menu.Items.Add(_right);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Quitter", null, (_, _) => QuitRequested?.Invoke()));
+        _quit = new ToolStripMenuItem("", null, (_, _) => QuitRequested?.Invoke());
+        menu.Items.Add(_quit);
 
         _icon = new NotifyIcon
         {
-            Text = Dev ? "Audio Share (développement)" : "Audio Share",
+            Text = Dev ? "Audio Share (dev)" : "Audio Share",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -49,7 +50,18 @@ internal sealed class TrayIcon : IDisposable
         {
             if (e.Button == MouseButtons.Left) ShowRequested?.Invoke();
         };
+        ApplyLanguage();
         SetActive(false);
+    }
+
+    /// <summary>Textes du menu dans la langue courante (appelé au changement).</summary>
+    public void ApplyLanguage()
+    {
+        _show.Text = Loc.T("Show Audio Share", "Afficher Audio Share");
+        _left.Text = Loc.T("Left", "Gauche");
+        _stereo.Text = Loc.T("Stereo", "Stéréo");
+        _right.Text = Loc.T("Right", "Droite");
+        _quit.Text = Loc.T("Quit", "Quitter");
     }
 
     private void Choose(float l, float r)

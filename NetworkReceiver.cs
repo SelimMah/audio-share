@@ -61,8 +61,9 @@ internal sealed class NetworkReceiver : IDisposable
     private BufferedWaveProvider? _buffer;
     private VolumeBalanceProvider? _vb;
     private volatile string? _senderName;
+    private IPAddress? _senderAddress;
 
-    private float _left = 1f, _right = 1f, _gain = 1f;
+    private float _left = 1f, _right = 1f;
 
     public string? SenderName => _senderName;
     public bool IsReceiving => _senderName != null;
@@ -89,10 +90,22 @@ internal sealed class NetworkReceiver : IDisposable
         if (_vb is { } vb) { vb.Left = left; vb.Right = right; }
     }
 
-    public void SetGain(float gain)
+    /// <summary>
+    /// Contrôles partagés, sens récepteur → émetteur : le volume vit chez
+    /// l'émetteur (appliqué aux échantillons envoyés), notre curseur ne fait
+    /// que le télécommander ; l'émetteur renvoie la valeur en écho.
+    /// </summary>
+    public void SendVolumeToSender(float volume)
     {
-        _gain = gain;
-        if (_vb is { } vb) vb.Gain = gain;
+        var target = _senderAddress;
+        if (target == null || _udp == null) return;
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(
+                "ASHAREVOL " + volume.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _udp.Send(bytes, bytes.Length, new IPEndPoint(target, DiscoveryPort));
+        }
+        catch { /* datagramme perdu : le prochain corrigera */ }
     }
 
     private async Task DiscoveryLoopAsync(CancellationToken ct)
@@ -112,13 +125,13 @@ internal sealed class NetworkReceiver : IDisposable
                 }
                 else if (text.StartsWith("ASHAREVOL "))
                 {
-                    // Contrôles partagés : l'émetteur pilote le volume du flux
+                    // Contrôles partagés : valeur du volume émis, déjà
+                    // appliquée aux échantillons par l'émetteur — on ne fait
+                    // que la refléter (curseur), sans l'appliquer une 2e fois.
                     if (float.TryParse(text[10..], System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out var gain))
                     {
-                        gain = Math.Clamp(gain, 0f, 1f);
-                        SetGain(gain);
-                        RemoteGain?.Invoke(gain);
+                        RemoteGain?.Invoke(Math.Clamp(gain, 0f, 1f));
                     }
                 }
                 else if (text.StartsWith("ASHAREBAL "))
@@ -177,6 +190,7 @@ internal sealed class NetworkReceiver : IDisposable
             var nameBuffer = new byte[nameLength];
             await ReadExactAsync(stream, nameBuffer, nameLength, ct);
             _senderName = Encoding.UTF8.GetString(nameBuffer);
+            _senderAddress = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
             Log.Write($"Réseau : émetteur « {_senderName} » connecté ({rate} Hz, {channels} canaux, {bits} bits)");
 
             _buffer = new BufferedWaveProvider(new WaveFormat(rate, bits, channels))
@@ -186,7 +200,7 @@ internal sealed class NetworkReceiver : IDisposable
             };
             _vb = new VolumeBalanceProvider(_buffer.ToSampleProvider())
             {
-                Left = _left, Right = _right, Gain = _gain,
+                Left = _left, Right = _right,
             };
             _output = new WasapiOut(AudioClientShareMode.Shared, 60);
             _output.Init(_vb);
@@ -212,6 +226,7 @@ internal sealed class NetworkReceiver : IDisposable
         finally
         {
             _senderName = null;
+            _senderAddress = null;
             StopPlayback();
             Changed?.Invoke();
         }

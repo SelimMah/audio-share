@@ -77,6 +77,9 @@ internal sealed class NetworkSender : IDisposable
     {
         _sendVolume = Math.Clamp(volume, 0f, 1f);
         EmissionVolumeChanged?.Invoke(_sendVolume);
+        // Contrôles partagés : le récepteur reflète ce volume dans son UI
+        // (et nous le renvoie quand c'est lui qu'on manipule).
+        SendControl($"ASHAREVOL {_sendVolume.ToString(CultureInfo.InvariantCulture)}");
     }
 
     /// <summary>Appui volume +/− intercepté : ajuste le volume émis d'un pas.</summary>
@@ -134,15 +137,16 @@ internal sealed class NetworkSender : IDisposable
         {
             try
             {
-                SetState("🔍 Recherche d'un récepteur Audio Share sur le réseau…");
+                SetState(Loc.T("🔍 Looking for a receiver…", "🔍 Recherche d'un récepteur…"));
                 var (address, name) = await DiscoverAsync(ct);
-                SetState($"Récepteur trouvé : « {name} ». Connexion…");
+                SetState(Loc.T($"Connecting to “{name}”…", $"Connexion à « {name} »…"));
                 await StreamAsync(address, name, ct);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
             {
-                SetState($"Diffusion interrompue ({ex.Message}) — nouvel essai…");
+                Log.Write($"Émission interrompue : {ex.Message}");
+                SetState(Loc.T("Connection lost — retrying…", "Connexion perdue — nouvel essai…"));
                 try { await Task.Delay(2000, ct); } catch { return; }
             }
         }
@@ -257,6 +261,7 @@ internal sealed class NetworkSender : IDisposable
         muteGuard.Start();
 
         EmissionVolumeChanged?.Invoke(_sendVolume);
+        SendControl($"ASHAREVOL {_sendVolume.ToString(CultureInfo.InvariantCulture)}");
 
         try
         {
@@ -304,7 +309,7 @@ internal sealed class NetworkSender : IDisposable
             capture.RecordingStopped += (_, _) => done.TrySetResult();
 
             capture.StartRecording();
-            SetState($"🎵 Diffusion vers « {receiverName} » — haut-parleurs de ce PC coupés, contrôles partagés.");
+            SetState(Loc.T($"🎵 Streaming to “{receiverName}”", $"🎵 Diffusion vers « {receiverName} »"));
 
             await using (ct.Register(() =>
             {

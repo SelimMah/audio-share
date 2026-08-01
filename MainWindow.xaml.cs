@@ -73,15 +73,25 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => { if (IsVisible) PlaceBottomRight(); };
 
         _net.Changed += () => Dispatcher.Invoke(UpdateNetworkUi);
-        // Contrôles partagés : l'émetteur pilote aussi notre volume/balance.
+        // Contrôles partagés : le volume vit chez l'émetteur. Si c'est nous
+        // qui émettons, un ASHAREVOL entrant est une télécommande du
+        // récepteur ; sinon c'est l'émetteur qui nous informe (affichage).
         _net.RemoteGain += gain => Dispatcher.Invoke(() =>
         {
+            if (_sender.IsRunning)
+            {
+                _sender.SetEmissionVolume(gain);
+                return;
+            }
             _syncingVolume = true;
             VolumeSlider.Value = gain;
             _syncingVolume = false;
         });
         _net.RemoteBalance += (l, r) => Dispatcher.Invoke(() => SyncBalanceFromRemote(l, r));
         _net.Start();
+
+        Loc.Changed += ApplyLanguage;
+        ApplyLanguage();
         _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
         // En émission, le curseur montre le volume émis : il suit aussi les
         // touches physiques (BeginInvoke : l'événement vient d'un rappel COM,
@@ -128,13 +138,68 @@ public partial class MainWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e) =>
         ShowSettingsView(SettingsPanel.Visibility != Visibility.Visible);
 
+    /// <summary>
+    /// Applique la langue à tous les textes fixes ; les textes d'état
+    /// (en-têtes dynamiques, statuts) sont régénérés par les Update*Ui.
+    /// </summary>
+    private void ApplyLanguage()
+    {
+        _syncingLanguage = true;
+        LangEnglish.IsChecked = !Loc.French;
+        LangFrench.IsChecked = Loc.French;
+        _syncingLanguage = false;
+
+        GeneralHeader.Text = Loc.T("GENERAL", "GÉNÉRAL");
+        AutostartLabel.Text = Loc.T("Launch at Windows startup", "Ouvrir au démarrage de Windows");
+        LanguageLabel.Text = Loc.T("Language", "Langue");
+        UpdateLabel.Text = Loc.T("Updates", "Mise à jour");
+        CheckUpdateButton.Content = Loc.T("Check", "Vérifier");
+
+        EmptyHint.Text = Loc.T("No paired phone — pair one in Windows Bluetooth settings.",
+                               "Aucun téléphone appairé — appaire-le dans les réglages Bluetooth de Windows.");
+        NetworkLabel.Text = Loc.T("Local network", "Réseau local");
+        NetworkRow.ToolTip = Loc.T(
+            "Another PC running Audio Share can stream its audio here: turn on “Send” over there, the connection is automatic.",
+            "Un autre PC avec Audio Share peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.");
+        SendLabel.Text = Loc.T("Send this PC's audio", "Envoyer le son de ce PC");
+        BalanceLeft.Content = Loc.T("Left", "Gauche");
+        BalanceStereo.Content = Loc.T("Stereo", "Stéréo");
+        BalanceRight.Content = Loc.T("Right", "Droite");
+        BalanceCard.ToolTip = Loc.T(
+            "Only affects the received audio (phone or other PC) — never this PC's own sounds.",
+            "N'agit que sur le son reçu (téléphone ou autre PC) — jamais sur les sons de ce PC.");
+
+        if (SettingsPanel.Visibility == Visibility.Visible)
+        {
+            TitleText.Text = Loc.T("Settings", "Réglages");
+            UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
+                                      $"Version installée : {Updater.CurrentVersion}");
+        }
+        UpdateNetworkUi();
+        UpdateSendUi();
+        _tray.ApplyLanguage();
+    }
+
+    private bool _syncingLanguage;
+
+    private void Language_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _syncingLanguage) return;
+        Loc.SetFrench(LangFrench.IsChecked == true);
+    }
+
     /// <summary>La page Réglages remplace la page principale, et inversement.</summary>
     private void ShowSettingsView(bool show)
     {
         if (show)
         {
             AutostartToggle.IsChecked = IsAutostartEnabled();
-            UpdateStatus.Text = $"Version installée : {Updater.CurrentVersion}";
+            _syncingLanguage = true;
+            LangEnglish.IsChecked = !Loc.French;
+            LangFrench.IsChecked = Loc.French;
+            _syncingLanguage = false;
+            UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
+                                      $"Version installée : {Updater.CurrentVersion}");
             // La page Réglages, plus courte, garde la taille de la page
             // principale : pas de fenêtre qui rétrécit à la bascule.
             MinHeight = ActualHeight;
@@ -145,7 +210,7 @@ public partial class MainWindow : Window
         }
         SettingsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         MainPanel.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
-        TitleText.Text = show ? "Réglages" : "Audio Share";
+        TitleText.Text = show ? Loc.T("Settings", "Réglages") : "Audio Share";
         SettingsButton.Content = show ? "" : ""; // croix / engrenage
         SettingsButton.ToolTip = show ? "Retour" : "Réglages";
     }
@@ -175,7 +240,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Impossible de modifier le démarrage automatique : {ex.Message}";
+            Log.Write($"Démarrage automatique : modification impossible ({ex.Message})");
         }
     }
 
@@ -207,10 +272,11 @@ public partial class MainWindow : Window
         }
         else
         {
-            NetworkStatus.Text = "en écoute";
+            NetworkStatus.Text = Loc.T("listening", "en écoute");
             NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("LabelTertiary");
         }
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
+        MuteButton.IsEnabled = VolumeSlider.IsEnabled;
     }
 
     /// <summary>
@@ -243,8 +309,11 @@ public partial class MainWindow : Window
         SendStatus.Text = _sender.State;
         SendStatus.Visibility = string.IsNullOrEmpty(_sender.State)
             ? Visibility.Collapsed : Visibility.Visible;
-        VolumeHeader.Text = _sender.IsRunning ? "SON ÉMIS" : "SON REÇU";
+        VolumeHeader.Text = _sender.IsRunning
+            ? Loc.T("SENT AUDIO", "SON ÉMIS")
+            : Loc.T("RECEIVED AUDIO", "SON REÇU");
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
+        MuteButton.IsEnabled = VolumeSlider.IsEnabled;
 
         // Pendant l'émission, les touches volume sont interceptées : elles
         // pilotent le volume émis avec notre aperçu, et le périphérique
@@ -274,7 +343,8 @@ public partial class MainWindow : Window
         PhoneAudio.Refresh();
         bool present = PhoneAudio.IsPresent;
         VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;
-        // En émission, le curseur appartient au volume du périphérique.
+        MuteButton.IsEnabled = VolumeSlider.IsEnabled;
+        // En émission, le curseur appartient au volume émis.
         if (_sender.IsRunning || !present) return;
 
         float volume = PhoneAudio.Volume;
@@ -287,6 +357,7 @@ public partial class MainWindow : Window
 
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        UpdateMuteIcon();
         if (_syncingVolume || !IsLoaded) return;
         float v = (float)e.NewValue;
         if (_sender.IsRunning)
@@ -296,8 +367,51 @@ public partial class MainWindow : Window
             _sender.SetEmissionVolume(v);
             return;
         }
+        if (_net.IsReceiving)
+        {
+            // En réception réseau, le volume vit chez l'émetteur : on le
+            // télécommande, il nous renverra la valeur en écho.
+            _net.SendVolumeToSender(v);
+            return;
+        }
         PhoneAudio.Volume = v;
-        _net.SetGain(v);
+    }
+
+    // ---------- Muet ----------
+
+    private float _preMuteVolume = 0.5f;
+
+    /// <summary>
+    /// L'icône à gauche du curseur coupe/rétablit le volume (reçu ou émis
+    /// selon le mode) en passant simplement le curseur à 0 et retour : les
+    /// chemins d'application existants font le reste.
+    /// </summary>
+    private void Mute_Click(object sender, RoutedEventArgs e)
+    {
+        if (VolumeSlider.Value > 0.001)
+        {
+            _preMuteVolume = (float)VolumeSlider.Value;
+            VolumeSlider.Value = 0;
+        }
+        else
+        {
+            VolumeSlider.Value = _preMuteVolume > 0.001f ? _preMuteVolume : 0.5;
+        }
+    }
+
+    private void UpdateMuteIcon()
+    {
+        double v = VolumeSlider.Value;
+        MuteButton.Content = v switch
+        {
+            <= 0.001 => "", // muet
+            < 0.34 => "",
+            < 0.67 => "",
+            _ => "",
+        };
+        MuteButton.ToolTip = v <= 0.001
+            ? Loc.T("Unmute", "Rétablir le son")
+            : Loc.T("Mute", "Couper le son");
     }
 
     // ---------- Balance ----------
@@ -316,9 +430,6 @@ public partial class MainWindow : Window
 
         _tray.SyncBalance(l, r);
         AnimateBalanceTo(l, r);
-
-        if (l != r && !PhoneAudio.IsPresent && !_net.IsReceiving)
-            StatusText.Text = "La balance s'appliquera dès qu'un son sera reçu.";
     }
 
     private DispatcherTimer? _balanceAnim;
@@ -412,8 +523,10 @@ public partial class MainWindow : Window
         if (!_trayHintShown)
         {
             _trayHintShown = true;
-            _tray.Notify("Audio Share reste actif en arrière-plan",
-                         "Clique sur l'icône pour rouvrir. Quitter : clic droit sur l'icône.");
+            _tray.Notify(Loc.T("Audio Share keeps running in the background",
+                               "Audio Share reste actif en arrière-plan"),
+                         Loc.T("Click the tray icon to reopen. Quit: right-click the icon.",
+                               "Clique sur l'icône pour rouvrir. Quitter : clic droit sur l'icône."));
         }
     }
 
@@ -474,7 +587,6 @@ public partial class MainWindow : Window
         var connection = AudioPlaybackConnection.TryCreateFromId(dev.Id);
         if (connection == null)
         {
-            StatusText.Text = "Impossible de créer la connexion audio pour cet appareil.";
             DeviceList.SelectedItem = null;
             return;
         }
@@ -487,31 +599,24 @@ public partial class MainWindow : Window
             var d = _devices.FirstOrDefault(x => x.Id == _activeId);
             if (d == null) return;
             bool opened = conn.State == AudioPlaybackConnectionState.Opened;
-            d.Status = opened ? "connecté" : "en attente";
-            StatusText.Text = opened
-                ? $"Le son de « {d.Name} » est diffusé sur ce PC."
-                : "Connexion fermée. Reconnecte le Bluetooth depuis le téléphone.";
+            d.Status = opened ? Loc.T("connected", "connecté") : Loc.T("waiting", "en attente");
             _tray.SetActive(opened);
         });
-
-        StatusText.Text = $"Activation de la réception pour « {dev.Name} »…";
 
         try
         {
             await connection.StartAsync();
         }
-        catch (Exception ex)
+        catch
         {
-            StatusText.Text = $"Erreur à l'activation : {ex.Message}";
             CloseConnection(dev.Id);
             DeviceList.SelectedItem = null;
             return;
         }
 
-        dev.Status = "en attente";
+        dev.Status = Loc.T("waiting", "en attente");
         dev.IsActive = true;
         _tray.SetActive(true);
-        StatusText.Text = $"Réception active. Sur « {dev.Name} », connecte-toi à ce PC depuis les réglages Bluetooth.";
 
         // Tente d'ouvrir le flux audio toutes les 2 s jusqu'à ce que le téléphone soit connecté
         _retryTimer?.Stop();
@@ -526,7 +631,6 @@ public partial class MainWindow : Window
         e.Handled = true; // ne pas laisser le clic re-sélectionner la ligne
         if (_activeId != null) CloseConnection(_activeId);
         DeviceList.SelectedItem = null;
-        StatusText.Text = "Réception arrêtée.";
     }
 
     private async Task TryOpenAsync()
@@ -563,11 +667,6 @@ public partial class MainWindow : Window
             dev.IsActive = false;
         }
         _tray.SetActive(false);
-    }
-
-    private void OpenSettings_Click(object sender, RoutedEventArgs e)
-    {
-        Process.Start(new ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true });
     }
 
     /// <summary>

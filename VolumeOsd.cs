@@ -24,7 +24,7 @@ internal sealed class VolumeOsd : Window
     private const double TrackWidth = 170;
 
     private readonly TextBlock _icon;
-    private readonly Border _fill;
+    private readonly Slider _bar;
     private readonly TextBlock _percent;
     private readonly DispatcherTimer _hide;
 
@@ -33,6 +33,16 @@ internal sealed class VolumeOsd : Window
         WindowStyle = WindowStyle.None;
         AllowsTransparency = false;
         Background = Brushes.Transparent;
+        // Sans vitre étendue (GlassFrameThickness -1), WPF peint un fond
+        // opaque et l'acrylique DWM reste invisible — même recette que le
+        // flyout principal.
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 0,
+            GlassFrameThickness = new Thickness(-1),
+            ResizeBorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+        });
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
@@ -41,25 +51,23 @@ internal sealed class VolumeOsd : Window
 
         var iconFont = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets");
         var label = Res<Brush>("Label", Brushes.White);
-        var accent = Res<Brush>("Accent", new SolidColorBrush(Color.FromRgb(0x0A, 0x84, 0xFF)));
 
         _icon = new TextBlock
         {
             FontFamily = iconFont, FontSize = 16, Foreground = label,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0),
         };
-        var track = new Border
+        // Le même curseur que dans l'app (style IosSlider), en lecture seule :
+        // l'aperçu a exactement le rendu du contrôle de volume de l'app.
+        _bar = new Slider
         {
-            Width = TrackWidth, Height = 4, CornerRadius = new CornerRadius(2),
-            Background = Res<Brush>("SegmentBed", new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF))),
+            Width = TrackWidth,
+            IsHitTestVisible = false,
+            Focusable = false,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        _fill = new Border
-        {
-            Height = 4, CornerRadius = new CornerRadius(2), Background = accent,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-        };
-        track.Child = _fill;
+        if (Application.Current.TryFindResource("IosSlider") is Style ios)
+            _bar.Style = ios;
         _percent = new TextBlock
         {
             FontFamily = Res<FontFamily>("Body", new FontFamily("Segoe UI Variable Text")),
@@ -70,7 +78,7 @@ internal sealed class VolumeOsd : Window
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(18, 14, 18, 14) };
         row.Children.Add(_icon);
-        row.Children.Add(track);
+        row.Children.Add(_bar);
         row.Children.Add(_percent);
         Content = row;
 
@@ -92,7 +100,7 @@ internal sealed class VolumeOsd : Window
             < 0.67f => "",
             _ => "",
         };
-        _fill.Width = TrackWidth * Math.Clamp(volume, 0f, 1f);
+        _bar.Value = Math.Clamp(volume, 0f, 1f);
         _percent.Text = Math.Round(volume * 100).ToString();
 
         var area = SystemParameters.WorkArea;
