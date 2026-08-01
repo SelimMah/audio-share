@@ -1,8 +1,8 @@
-; Installateur Audio Share — Inno Setup 6
+﻿; Installateur Audio Share — Inno Setup 6
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
 #define MyAppName "Audio Share"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.3.1"
 #define MyAppExeName "AudioShare.exe"
 
 [Setup]
