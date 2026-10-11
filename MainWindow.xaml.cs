@@ -134,6 +134,18 @@ public partial class MainWindow : Window
             else { _vuTimer.Stop(); _vuShown = 0; }
         };
 
+        // Repère sonore du volume : au relâchement de la souris, sinon dès que
+        // la valeur ne bouge plus (clavier). Tant que le bouton est enfoncé,
+        // le minuteur patiente — il rattrape aussi un relâchement hors curseur.
+        VolumeSlider.PreviewMouseLeftButtonUp += (_, _) =>
+        {
+            if (_toneTimer.IsEnabled) PlayVolumeTone();
+        };
+        _toneTimer.Tick += (_, _) =>
+        {
+            if (Mouse.LeftButton != MouseButtonState.Pressed) PlayVolumeTone();
+        };
+
         // Suit la session du téléphone : volume synchronisé, et balance
         // réappliquée automatiquement après chaque reconnexion.
         _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -721,6 +733,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Crête instantanée (0..1) du son que pilote le curseur — émis, reçu du
+    /// réseau ou du téléphone ; null quand il n'y a rien à piloter.
+    /// </summary>
+    private float? CurrentLevel() =>
+        _sender.IsRunning ? _sender.Level
+        : _net.IsReceiving ? _net.OutputLevel
+        : PhoneAudio.IsPresent ? PhoneAudio.Peak
+        : null;
+
+    /// <summary>
     /// Aurore diffuse sur tout le fond de la carte volume : l'opacité respire
     /// avec le niveau (attaque immédiate, retombée douce) ; chaque nappe
     /// dérive en 2D, se déforme (étirement, rotation) et change lentement de
@@ -729,11 +751,7 @@ public partial class MainWindow : Window
     /// </summary>
     private void UpdateVu()
     {
-        float level;
-        if (_sender.IsRunning) level = _sender.Level;
-        else if (_net.IsReceiving) level = _net.OutputLevel;
-        else if (PhoneAudio.IsPresent) level = PhoneAudio.Peak;
-        else
+        if (CurrentLevel() is not { } level)
         {
             VuGlow.Opacity = 0;
             _vuShown = 0f;
@@ -812,8 +830,10 @@ public partial class MainWindow : Window
         if (_syncingVolume || !IsLoaded) return;
         float v = (float)e.NewValue;
 
-        // Bip de feedback immédiat au volume choisi
-        VolumeTestTone.PlayAtVolume(v);
+        // Repère sonore : pas pendant le geste, une seule note quand il se
+        // termine (relâchement, ou valeur stable pour le clavier).
+        _toneTimer.Stop();
+        _toneTimer.Start();
 
         if (_sender.IsRunning)
         {
@@ -830,6 +850,39 @@ public partial class MainWindow : Window
             return;
         }
         PhoneAudio.Volume = v;
+    }
+
+    private readonly DispatcherTimer _toneTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
+
+    /// <summary>
+    /// Une note brève au volume choisi, à la fin du geste — et seulement si
+    /// rien ne joue : quand du son passe, c'est lui qui renseigne, inutile de
+    /// lui superposer un repère. Elle sort là où sort le son piloté, avec sa
+    /// balance.
+    /// </summary>
+    private void PlayVolumeTone()
+    {
+        _toneTimer.Stop();
+        float v = (float)VolumeSlider.Value;
+        if (v < 0.001f) return;
+        if (CurrentLevel() is not { } level || level > 0.01f) return;
+
+        if (_sender.IsRunning)
+        {
+            // Nos haut-parleurs sont coupés, mais la boucle prélève avant le
+            // muet : la note part dans le flux, qui lui applique le volume
+            // émis, puis le récepteur sa balance.
+            VolumeTestTone.Play(1f, 1f);
+        }
+        else if (_net.IsReceiving)
+        {
+            VolumeTestTone.Play(v * _balL, v * _balR, NetworkReceiver.CreateOutput);
+        }
+        else
+        {
+            // Le flux du téléphone ne suit que la sortie par défaut.
+            VolumeTestTone.Play(v * _balL, v * _balR);
+        }
     }
 
     // ---------- Muet ----------

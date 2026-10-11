@@ -430,7 +430,7 @@ internal sealed class NetworkReceiver : IDisposable
     /// Sortie choisie dans les Réglages (Prefs), sinon la sortie par défaut.
     /// Un périphérique disparu (débranché) retombe sur la sortie par défaut.
     /// </summary>
-    private static WasapiOut CreateOutput()
+    public static WasapiOut CreateOutput()
     {
         var id = Prefs.OutputDeviceId;
         if (!string.IsNullOrEmpty(id))
