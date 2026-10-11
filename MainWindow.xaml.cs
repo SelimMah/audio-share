@@ -133,21 +133,18 @@ public partial class MainWindow : Window
             else { _vuTimer.Stop(); _vuShown = 0; }
         };
 
-        Loaded += (_, _) =>
-        {
-            AnimateIn();
+        // Suit la session du téléphone : volume synchronisé, et balance
+        // réappliquée automatiquement après chaque reconnexion.
+        _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _pollTimer.Tick += (_, _) => PollPhoneSession();
+        _pollTimer.Start();
 
-            // Suit la session du téléphone : volume synchronisé, et balance
-            // réappliquée automatiquement après chaque reconnexion.
-            _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            _pollTimer.Tick += (_, _) => PollPhoneSession();
-            _pollTimer.Start();
+        // Mise à jour automatique en arrière-plan : si une nouvelle release
+        // existe, l'installateur silencieux remplace l'app et la relance.
+        _ = Updater.CheckAndUpdateAsync(msg =>
+            Dispatcher.Invoke(() => _tray.Notify("Audio Share", msg)));
 
-            // Mise à jour automatique en arrière-plan : si une nouvelle release
-            // existe, l'installateur silencieux remplace l'app et la relance.
-            _ = Updater.CheckAndUpdateAsync(msg =>
-                Dispatcher.Invoke(() => _tray.Notify("Audio Share", msg)));
-        };
+        Loaded += (_, _) => AnimateIn();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -795,6 +792,10 @@ public partial class MainWindow : Window
         UpdateMuteIcon();
         if (_syncingVolume || !IsLoaded) return;
         float v = (float)e.NewValue;
+
+        // Bip de feedback immédiat au volume choisi
+        VolumeTestTone.PlayAtVolume(v);
+
         if (_sender.IsRunning)
         {
             // En émission, le curseur pilote le volume émis (logiciel,

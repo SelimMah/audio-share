@@ -98,25 +98,22 @@ internal sealed class TrayIcon : IDisposable
     private static readonly bool Dev = !Updater.IsInstalledCopy;
 
     /// <summary>
-    /// Dessine l'icône en 64×64 (Windows la réduit proprement) : une pastille
-    /// dégradée avec un téléphone qui émet des ondes — volontairement distincte
-    /// du haut-parleur blanc de Windows. Bleu/violet pour l'app installée,
-    /// orange/rose pour la copie de développement.
+    /// Dessine l'icône en 64×64 (Windows la réduit proprement) : ondes sonores
+    /// fluides et concentriques, émanant d'une source centrale. Bleu/violet pour
+    /// l'app installée, orange/rose pour la copie de développement.
     /// </summary>
     private static Icon Draw(bool active)
     {
-        Color c1, c2, detailColor;
+        Color c1, c2;
         if (active)
         {
             c1 = Dev ? Color.FromArgb(255, 159, 10) : Color.FromArgb(10, 132, 255);
             c2 = Dev ? Color.FromArgb(255, 55, 95) : Color.FromArgb(191, 90, 242);
-            detailColor = Dev ? Color.FromArgb(250, 120, 40) : Color.FromArgb(60, 110, 250);
         }
         else
         {
             c1 = Color.FromArgb(128, 128, 134);
             c2 = Color.FromArgb(70, 70, 74);
-            detailColor = Color.FromArgb(100, 100, 106);
         }
 
         using var bmp = new Bitmap(64, 64);
@@ -129,19 +126,28 @@ internal sealed class TrayIcon : IDisposable
             using var bg = new LinearGradientBrush(rect, c1, c2, 55f);
             g.FillEllipse(bg, rect);
 
-            // Téléphone blanc, bords arrondis
-            using var phone = RoundedRect(16f, 17f, 15f, 30f, 4.5f);
-            g.FillPath(Brushes.White, phone);
+            var cx = 32f;
+            var cy = 32f;
 
-            // Écouteur et bouton, dans la couleur du fond pour le relief
-            using var detail = new SolidBrush(detailColor);
-            g.FillEllipse(detail, 21.5f, 20.5f, 4f, 1.8f);
-            g.FillEllipse(detail, 21.7f, 41.5f, 3.6f, 3.6f);
+            // Trois ondes concentriques émanant du centre
+            var waveWidths = new[] { 2.4f, 1.8f, 1.2f };
+            var waveRadii = new[] { 7f, 14f, 21f };
 
-            // Ondes émises vers la droite
-            using var wave = new Pen(Color.White, 3.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-            g.DrawArc(wave, 32f, 25f, 10f, 14f, -52, 104);
-            g.DrawArc(wave, 36f, 19f, 19f, 26f, -52, 104);
+            for (int i = 0; i < 3; i++)
+            {
+                using var wave = new Pen(Color.White, waveWidths[i])
+                {
+                    StartCap = LineCap.Round,
+                    EndCap = LineCap.Round
+                };
+
+                var radius = waveRadii[i];
+                // Arc de 220° pour un effet de flux directionnel (légèrement vers le haut/droite)
+                g.DrawArc(wave, cx - radius, cy - radius, radius * 2, radius * 2, -20, 220);
+            }
+
+            // Point central blanc pour l'origine des ondes
+            g.FillEllipse(Brushes.White, cx - 3.5f, cy - 3.5f, 7f, 7f);
 
             // Pastille « dev » en bas à droite, lisible même en 16×16
             if (Dev)
