@@ -94,6 +94,39 @@ internal static class PhoneAudio
         return false;
     }
 
+    /// <summary>
+    /// Pour le journal : état de la session, périphérique qui la rend, et
+    /// sortie par défaut (le flux ne suit qu'elle). Null sans session.
+    /// </summary>
+    public static string? Describe()
+    {
+        lock (Gate)
+        {
+            if (_session == null) return null;
+            try
+            {
+                var state = _session.State switch
+                {
+                    AudioSessionState.AudioSessionStateActive => "active",
+                    AudioSessionState.AudioSessionStateInactive => "inactive",
+                    _ => "expirée",
+                };
+                string? defaultName = null;
+                try
+                {
+                    defaultName = new MMDeviceEnumerator()
+                        .GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).FriendlyName;
+                }
+                catch { }
+                var where = _device?.FriendlyName ?? "?";
+                return defaultName == null || defaultName == where
+                    ? $"{state} sur « {where} »"
+                    : $"{state} sur « {where} » (sortie par défaut : « {defaultName} »)";
+            }
+            catch { return null; }
+        }
+    }
+
     // ---------- Balance ----------
 
     /// <summary>1,1 = stéréo ; 1,0 = gauche seulement ; 0,1 = droite seulement.</summary>

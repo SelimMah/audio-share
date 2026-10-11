@@ -115,6 +115,7 @@ public partial class MainWindow : Window
         });
 
         StartWatcher();
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
         // passe sa vie cachée, pas de réveil 20 fois par seconde pour rien.
@@ -773,6 +774,7 @@ public partial class MainWindow : Window
         if (_net.IsReceiving && IsVisible) UpdateNetworkUi();
         if (IsVisible && _page == AppPage.Diag) UpdateDiagnostics();
         PhoneAudio.Refresh();
+        LogPhoneSession();
         bool present = PhoneAudio.IsPresent;
         VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
@@ -785,6 +787,23 @@ public partial class MainWindow : Window
         _syncingVolume = true;
         VolumeSlider.Value = volume;
         _syncingVolume = false;
+    }
+
+    private string? _lastPhoneSession;
+
+    /// <summary>
+    /// Trace les apparitions, disparitions et changements d'état de la session
+    /// du téléphone : c'est ce qui permet, après coup, de distinguer un
+    /// « connecté mais muet » d'une simple pause en relisant le journal.
+    /// </summary>
+    private void LogPhoneSession()
+    {
+        var summary = PhoneAudio.Describe();
+        if (summary == _lastPhoneSession) return;
+        _lastPhoneSession = summary;
+        Log.Write(summary == null
+            ? "Bluetooth : plus aucune session audio du téléphone"
+            : $"Bluetooth : session du téléphone {summary}");
     }
 
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1018,26 +1037,49 @@ public partial class MainWindow : Window
         await StartConnectionAsync(dev);
     }
 
-    private async Task StartConnectionAsync(BtDevice dev)
+    // La connexion active a-t-elle déjà été ouverte ? Distingue une liaison
+    // perdue d'une liaison pas encore établie.
+    private bool _wasOpened;
+
+    // Après une perte de liaison, on ne relance le téléphone que quelques
+    // minutes : au-delà, il a sans doute été déconnecté exprès (depuis
+    // l'iPhone, rien ne distingue ce cas d'une sortie de portée). La
+    // connexion neuve reste prête : il peut toujours revenir de lui-même.
+    private static readonly TimeSpan LossRetryWindow = TimeSpan.FromMinutes(2);
+    private DateTime _retryUntil = DateTime.MaxValue;
+    // Dernière reconnexion obtenue d'office (voir OnConnectionStateChanged).
+    private DateTime _autoOpenedAt = DateTime.MinValue;
+
+    private bool IsCurrent(string id, AudioPlaybackConnection connection) =>
+        _connections.TryGetValue(id, out var current) && current == connection;
+
+    /// <param name="retryFor">Durée pendant laquelle relancer le téléphone ;
+    /// null = tant que l'appareil reste choisi (clic de l'utilisateur).</param>
+    private async Task StartConnectionAsync(BtDevice dev, TimeSpan? retryFor = null)
     {
+        // Toujours une connexion neuve : une connexion retombée à Closed puis
+        // rouverte peut se dire « Opened » — et le téléphone « connecté » —
+        // sans plus rien faire entendre. Seul un objet neuf rétablit le son
+        // (c'est ce que faisait « ✕ puis re-clic » à la main).
+        DisposeConnection(dev.Id);
+        _retryTimer?.Stop();
+
         var connection = AudioPlaybackConnection.TryCreateFromId(dev.Id);
         if (connection == null)
         {
+            CloseConnection(dev.Id);
             DeviceList.SelectedItem = null;
             return;
         }
 
         _connections[dev.Id] = connection;
         _activeId = dev.Id;
+        _wasOpened = false;
 
-        connection.StateChanged += (conn, _) => Dispatcher.Invoke(() =>
-        {
-            var d = _devices.FirstOrDefault(x => x.Id == _activeId);
-            if (d == null) return;
-            bool opened = conn.State == AudioPlaybackConnectionState.Opened;
-            d.Status = opened ? Loc.T("connected", "connecté") : Loc.T("waiting", "en attente");
-            _tray.SetActive(opened);
-        });
+        // BeginInvoke et non Invoke : l'événement vient d'un rappel WinRT, et
+        // Dispose() sur le thread d'interface pourrait attendre ce rappel.
+        connection.StateChanged += (conn, _) =>
+            Dispatcher.BeginInvoke(() => OnConnectionStateChanged(dev, conn));
 
         try
         {
@@ -1049,21 +1091,84 @@ public partial class MainWindow : Window
             // Sans cette trace, un échec ici est totalement invisible :
             // l'appareil reste « en attente » sans que rien ne l'explique.
             Log.Write($"Bluetooth : activation refusée pour « {dev.Name} » — {ex.Message}");
+            if (!IsCurrent(dev.Id, connection)) return;
             CloseConnection(dev.Id);
             DeviceList.SelectedItem = null;
             return;
         }
+        // Arrêtée ou remplacée pendant l'activation.
+        if (!IsCurrent(dev.Id, connection)) return;
 
-        dev.Status = Loc.T("waiting", "en attente");
+        if (connection.State != AudioPlaybackConnectionState.Opened)
+            dev.Status = Loc.T("waiting", "en attente");
         dev.IsActive = true;
         _tray.SetActive(true);
 
         // Tente d'ouvrir le flux audio toutes les 2 s jusqu'à ce que le téléphone soit connecté
-        _retryTimer?.Stop();
-        _retryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _retryTimer.Tick += async (_, _) => await TryOpenAsync();
+        _retryUntil = retryFor is { } window ? DateTime.Now + window : DateTime.MaxValue;
+        _retryTimer ??= CreateRetryTimer();
         _retryTimer.Start();
         await TryOpenAsync();
+    }
+
+    private DispatcherTimer CreateRetryTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        timer.Tick += async (_, _) => await TryOpenAsync();
+        return timer;
+    }
+
+    private void OnConnectionStateChanged(BtDevice dev, AudioPlaybackConnection conn)
+    {
+        // Rappel d'une connexion déjà remplacée ou fermée : sans objet.
+        if (!IsCurrent(dev.Id, conn)) return;
+
+        if (conn.State == AudioPlaybackConnectionState.Opened)
+        {
+            if (!_wasOpened)
+            {
+                Log.Write("Bluetooth : connexion établie");
+                if (_retryUntil != DateTime.MaxValue) _autoOpenedAt = DateTime.Now;
+            }
+            _wasOpened = true;
+            _retryTimer?.Stop();
+            dev.Status = Loc.T("connected", "connecté");
+            _tray.SetActive(true);
+            return;
+        }
+
+        dev.Status = Loc.T("waiting", "en attente");
+        // Pas encore établie : la boucle d'ouverture s'en occupe déjà.
+        if (!_wasOpened) return;
+
+        // Liaison perdue (portée, veille, téléphone…) : on ne rouvre jamais
+        // cette connexion-là, on en recrée une. On ne relance le téléphone
+        // que si on ne vient pas déjà de le reconnecter d'office : s'il
+        // recoupe aussitôt, c'est qu'on le déconnecte exprès depuis l'iPhone,
+        // et on ne lutte pas contre l'utilisateur.
+        bool insist = DateTime.Now - _autoOpenedAt > LossRetryWindow;
+        Log.Write(insist
+            ? "Bluetooth : liaison perdue — nouvelle connexion, on relance le téléphone"
+            : "Bluetooth : liaison recoupée aussitôt — nouvelle connexion, sans relancer le téléphone");
+        _ = StartConnectionAsync(dev, insist ? LossRetryWindow : TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// À la sortie de veille, la radio Bluetooth repart de zéro : la connexion
+    /// d'avant peut rester « Opened » sans plus rien recevoir. On la remplace.
+    /// </summary>
+    private void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode != Microsoft.Win32.PowerModes.Resume) return;
+        Dispatcher.BeginInvoke(async () =>
+        {
+            // Laisse à la pile Bluetooth le temps de se réveiller.
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            var dev = _devices.FirstOrDefault(d => d.Id == _activeId);
+            if (dev == null) return;
+            Log.Write("Bluetooth : sortie de veille — nouvelle connexion");
+            await StartConnectionAsync(dev, LossRetryWindow);
+        });
     }
 
     private void Disconnect_Click(object sender, RoutedEventArgs e)
@@ -1073,18 +1178,33 @@ public partial class MainWindow : Window
         DeviceList.SelectedItem = null;
     }
 
+    // Connexion dont un OpenAsync est en cours. Il peut patienter ~25 s le
+    // temps que le téléphone réponde : le minuteur de 2 s empilait alors
+    // jusqu'à 5 ouvertures simultanées de la même connexion.
+    private AudioPlaybackConnection? _opening;
+
     private async Task TryOpenAsync()
     {
         if (_activeId == null || !_connections.TryGetValue(_activeId, out var connection)) return;
+        if (connection == _opening) return;
         if (connection.State == AudioPlaybackConnectionState.Opened)
         {
             _retryTimer?.Stop();
             return;
         }
+        if (DateTime.Now >= _retryUntil)
+        {
+            _retryTimer?.Stop();
+            Log.Write("Bluetooth : on attend que le téléphone revienne de lui-même");
+            return;
+        }
 
+        var id = _activeId;
+        _opening = connection;
         try
         {
             var result = await connection.OpenAsync();
+            if (!IsCurrent(id, connection)) return; // remplacée pendant l'attente
             if (result.Status == AudioPlaybackConnectionOpenResultStatus.Success)
             {
                 _retryTimer?.Stop();
@@ -1094,6 +1214,10 @@ public partial class MainWindow : Window
                 // tenté » en relisant le journal.
                 Log.Write("Bluetooth : flux audio ouvert");
                 _lastOpenIssue = null;
+                // Sans attendre StateChanged : une perte ultérieure doit être
+                // reconnue comme telle même si l'événement manquait à l'appel.
+                if (_devices.FirstOrDefault(d => d.Id == id) is { } dev)
+                    OnConnectionStateChanged(dev, connection);
                 return;
             }
             NoteOpenIssue(result.Status.ToString());
@@ -1103,7 +1227,11 @@ public partial class MainWindow : Window
             // Le téléphone n'est pas encore connecté — on réessaie au prochain
             // tick. On journalise quand même, mais une seule fois par cause :
             // la tentative revient toutes les 2 s et noierait le journal.
-            NoteOpenIssue(ex.Message);
+            if (IsCurrent(id, connection)) NoteOpenIssue(ex.Message);
+        }
+        finally
+        {
+            if (_opening == connection) _opening = null;
         }
     }
 
@@ -1118,11 +1246,18 @@ public partial class MainWindow : Window
         Log.Write($"Bluetooth : ouverture du flux impossible — {issue}");
     }
 
+    /// <summary>Libère la connexion de l'appareil sans toucher à l'interface.</summary>
+    private void DisposeConnection(string id)
+    {
+        if (!_connections.Remove(id, out var connection)) return;
+        try { connection.Dispose(); }
+        catch (Exception ex) { Log.Write($"Bluetooth : libération de la connexion — {ex.Message}"); }
+    }
+
     private void CloseConnection(string id)
     {
         _retryTimer?.Stop();
-        if (_connections.Remove(id, out var connection))
-            connection.Dispose();
+        DisposeConnection(id);
         if (_activeId == id) _activeId = null;
         var dev = _devices.FirstOrDefault(d => d.Id == id);
         if (dev != null)
@@ -1181,6 +1316,7 @@ public partial class MainWindow : Window
         _pollTimer?.Stop();
         _retryTimer?.Stop();
         _watcher?.Stop();
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
 
         // Ne pas laisser la session du téléphone avec un canal coupé.
         try { PhoneAudio.SetBalance(1f, 1f); } catch { }
