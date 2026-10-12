@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using Concentus;
@@ -168,17 +169,59 @@ internal sealed class NetworkSender : IDisposable
         }
     }
 
+    /// <summary>
+    /// Adresses de diffusion de la sonde. 255.255.255.255 ne sort que par UNE
+    /// carte, celle de plus faible métrique — une carte virtuelle (VirtualBox
+    /// Host-Only, Hyper-V…) peut passer devant le Wi-Fi et la sonde n'atteint
+    /// alors jamais le réseau local. On vise donc aussi la diffusion dirigée
+    /// de chaque sous-réseau actif, que la table de routage envoie sur la
+    /// bonne carte.
+    /// </summary>
+    private static List<IPAddress> BroadcastTargets()
+    {
+        var targets = new List<IPAddress> { IPAddress.Broadcast };
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up
+                    || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+
+                foreach (var ua in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    var ip = ua.Address.GetAddressBytes();
+                    var mask = ua.IPv4Mask.GetAddressBytes();
+                    for (int i = 0; i < 4; i++) ip[i] |= (byte)~mask[i];
+                    var directed = new IPAddress(ip);
+                    if (!targets.Contains(directed)) targets.Add(directed);
+                }
+            }
+        }
+        catch { /* énumération impossible : reste la diffusion générale */ }
+        return targets;
+    }
+
+    private static async Task SendProbeAsync(UdpClient udp, CancellationToken ct = default)
+    {
+        var probe = Encoding.UTF8.GetBytes("ASHARE?");
+        foreach (var target in BroadcastTargets())
+        {
+            try { await udp.SendAsync(probe, new IPEndPoint(target, NetworkReceiver.DiscoveryPort), ct); }
+            catch (SocketException) { /* carte sans route : les autres suffisent */ }
+        }
+    }
+
     private static async Task<(IPAddress Address, string Name)> DiscoverAsync(CancellationToken ct)
     {
         using var udp = new UdpClient { EnableBroadcast = true };
-        var probe = Encoding.UTF8.GetBytes("ASHARE?");
         string? preferred = Prefs.SendTarget; // destination choisie, null = auto
         int rounds = 0;
 
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            await udp.SendAsync(probe, new IPEndPoint(IPAddress.Broadcast, NetworkReceiver.DiscoveryPort), ct);
+            await SendProbeAsync(udp, ct);
 
             (IPAddress Address, string Name)? fallback = null;
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -229,8 +272,7 @@ internal sealed class NetworkSender : IDisposable
         try
         {
             using var udp = new UdpClient { EnableBroadcast = true };
-            var probe = Encoding.UTF8.GetBytes("ASHARE?");
-            await udp.SendAsync(probe, new IPEndPoint(IPAddress.Broadcast, NetworkReceiver.DiscoveryPort));
+            await SendProbeAsync(udp);
             using var cts = new CancellationTokenSource(timeoutMs);
             while (true)
             {
