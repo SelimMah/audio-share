@@ -38,6 +38,10 @@ public class OutputChoice
 {
     public string? Id { get; init; }
     public string Name { get; init; } = "";
+
+    // La zone fermée de la liste déroulante affiche l'élément tel quel
+    // (DisplayMemberPath ne vaut que pour les lignes de la liste).
+    public override string ToString() => Name;
 }
 
 public partial class MainWindow : Window
@@ -64,6 +68,19 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DeviceList.ItemsSource = _devices;
+
+        // Même ordre que DuckLogo.Draw : bec et aile dessous, corps par-dessus.
+        LogoBeak.Data = Geometry.Parse(DuckLogo.BeakPath);
+        LogoWing.Data = Geometry.Parse(DuckLogo.WingPath);
+        LogoBody.Data = Geometry.Parse(DuckLogo.BodyPath);
+        LogoBox.RenderTransform = new TransformGroup { Children = { _logoPop, _logoTilt, _logoHop } };
+        LogoHost.MouseEnter += (_, _) => WaddleLogo();
+
+        AttachSlidingPill(BalanceSegments);
+        AttachSlidingPill(LangSegments);
+        // Le contenu déplié pousse le bas de la page : on le suit, pour que
+        // ce qui apparaît reste en vue pendant toute l'ouverture.
+        AdvancedHost.SizeChanged += (_, _) => { if (_advancedOpen) PageScroll.ScrollToEnd(); };
 
         // Les anciennes versions passaient par un câble virtuel ; si l'une
         // d'elles a été tuée brutalement, ses redirections ont survécu dans le
@@ -186,6 +203,52 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool _advancedOpen;
+
+    private void AdvancedNav_Click(object sender, RoutedEventArgs e) =>
+        SetAdvancedOpen(!_advancedOpen, animate: true);
+
+    /// <summary>
+    /// Déplie ou replie les réglages avancés sous leur ligne : la hauteur de
+    /// AdvancedHost va de 0 à celle de son contenu. La fenêtre ne bouge pas,
+    /// c'est la page qui défile (PageScroll).
+    /// </summary>
+    private void SetAdvancedOpen(bool open, bool animate)
+    {
+        _advancedOpen = open;
+        AdvancedNavButton.Tag = open ? "open" : null; // chevron, voir le style NavRow
+        AdvancedHost.IsHitTestVisible = open;
+
+        double height = 0;
+        if (open)
+        {
+            PopulateOutputCombo();
+            PopulateDestCombo();
+            _syncingOpus = true;
+            OpusToggle.IsChecked = Prefs.OpusEnabled;
+            _syncingOpus = false;
+            // Mesure à part : dans un hôte de hauteur 0, la taille voulue
+            // du contenu serait rabotée à 0.
+            AdvancedContent.Measure(new System.Windows.Size(
+                AdvancedHost.ActualWidth, double.PositiveInfinity));
+            height = AdvancedContent.DesiredSize.Height;
+        }
+
+        if (!animate)
+        {
+            AdvancedHost.BeginAnimation(HeightProperty, null);
+            AdvancedHost.BeginAnimation(OpacityProperty, null);
+            AdvancedHost.Height = height;
+            AdvancedHost.Opacity = open ? 1 : 0;
+            return;
+        }
+        AdvancedHost.BeginAnimation(HeightProperty,
+            new DoubleAnimation(height, TimeSpan.FromMilliseconds(340))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
+        AdvancedHost.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(open ? 1 : 0, TimeSpan.FromMilliseconds(open ? 340 : 180)));
+    }
+
     private void DiagNav_Click(object sender, RoutedEventArgs e) =>
         NavigateTo(AppPage.Diag, forward: true);
 
@@ -209,7 +272,6 @@ public partial class MainWindow : Window
         OutputRow.ToolTip = Loc.T(
             "Applies to audio received from the network. Bluetooth phone audio always follows Windows' default output.",
             "S'applique au son reçu par le réseau. Le son Bluetooth du téléphone suit toujours la sortie par défaut de Windows.");
-        NetworkHeader.Text = Loc.T("NETWORK", "RÉSEAU");
         DestLabel.Text = Loc.T("Send to", "Envoyer vers");
         DestRow.ToolTip = Loc.T(
             "Which Audio Share receives this PC's audio. Automatic = the first one found.",
@@ -218,12 +280,13 @@ public partial class MainWindow : Window
         OpusRow.ToolTip = Loc.T(
             "Compresses the sent stream to 256 kbit/s (transparent) — 6x less bandwidth, useful on busy Wi-Fi.",
             "Compresse le flux émis à 256 kbit/s (transparent) — 6x moins de bande passante, utile en Wi-Fi chargé.");
+        AdvancedNavLabel.Text = Loc.T("Advanced", "Avancé");
         DiagNavLabel.Text = Loc.T("Diagnostics", "Diagnostic");
         DiagStreamHeader.Text = Loc.T("STREAM", "FLUX");
         DiagLogHeader.Text = Loc.T("LOG", "JOURNAL");
         DiagLatencyLabel.Text = Loc.T("Latency", "Latence");
         DiagRateLabel.Text = Loc.T("Bitrate", "Débit");
-        if (_page == AppPage.Settings)
+        if (_advancedOpen)
         {
             PopulateOutputCombo();
             PopulateDestCombo();
@@ -276,27 +339,44 @@ public partial class MainWindow : Window
         _ => Loc.T("Diagnostics", "Diagnostic"),
     };
 
+    private const double LogoWidth = 44; // largeur de LogoHost dans le XAML
+
     /// <summary>
-    /// Bascule de page avec transition : la nouvelle page glisse depuis la
-    /// droite (navigation avant) ou la gauche (retour) en fondu, le titre
-    /// fond aussi. Une seule page visible à la fois ; MinHeight évite que la
-    /// fenêtre (SizeToContent) rétrécisse en quittant la page principale.
+    /// Bascule de page avec transition : la page quittée s'efface en glissant
+    /// pendant que la nouvelle arrive depuis la droite (navigation avant) ou
+    /// la gauche (retour) ; le titre, le logo et le bouton suivent. En
+    /// quittant la page principale, la zone défilante est figée à sa hauteur
+    /// du moment : le panneau (SizeToContent) garde sa taille sur toutes les
+    /// pages, ce qui dépasse défile. <paramref name="animate"/> à false :
+    /// bascule sèche, pour un changement fait fenêtre cachée.
     /// </summary>
-    private void NavigateTo(AppPage target, bool forward)
+    private void NavigateTo(AppPage target, bool forward, bool animate = true)
     {
         if (target == _page) return;
 
-        if (_page == AppPage.Main) MinHeight = ActualHeight;
-        if (target == AppPage.Main) MinHeight = 0;
+        if (_page == AppPage.Main) PageScroll.Height = PageScroll.ActualHeight;
+        // Au retour, la hauteur n'est libérée qu'une fois la page quittée
+        // effacée (voir AnimatePanelOut) : plus haute, elle agrandirait le
+        // panneau le temps du fondu.
+        if (target == AppPage.Main && !animate) PageScroll.Height = double.NaN;
+
+        if (target == AppPage.Settings && _advancedOpen)
+        {
+            // Retour du diagnostic : on retrouve la section dépliée, en bas.
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(PageScroll.ScrollToEnd));
+        }
+        else
+        {
+            PageScroll.ScrollToTop();
+        }
 
         if (target == AppPage.Settings)
         {
+            // Les Réglages s'ouvrent toujours repliés.
+            if (_page == AppPage.Main) SetAdvancedOpen(false, animate: false);
+            _syncingAutostart = true;
             AutostartToggle.IsChecked = IsAutostartEnabled();
-            PopulateOutputCombo();
-            PopulateDestCombo();
-            _syncingOpus = true;
-            OpusToggle.IsChecked = Prefs.OpusEnabled;
-            _syncingOpus = false;
+            _syncingAutostart = false;
             _syncingLanguage = true;
             LangEnglish.IsChecked = !Loc.French;
             LangFrench.IsChecked = Loc.French;
@@ -309,15 +389,47 @@ public partial class MainWindow : Window
             UpdateDiagnostics();
         }
 
-        PanelFor(_page).Visibility = Visibility.Collapsed;
+        var leaving = PanelFor(_page);
+        var arriving = PanelFor(target);
         _page = target;
-        var panel = PanelFor(target);
-        panel.Visibility = Visibility.Visible;
-        AnimatePanelIn(panel, fromRight: forward);
-
         TitleText.Text = TitleFor(target);
-        TitleText.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)));
+        bool main = target == AppPage.Main;
+
+        if (animate)
+        {
+            AnimatePanelOut(leaving, toLeft: forward);
+            AnimatePanelIn(arriving, fromRight: forward);
+
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            TitleText.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)));
+            TitleSlide.BeginAnimation(TranslateTransform.XProperty,
+                new DoubleAnimation(forward ? 14 : -14, 0, TimeSpan.FromMilliseconds(320))
+                { EasingFunction = ease });
+            // Le logo se replie hors de la page principale : le titre prend
+            // sa place en glissant, et la lui rend au retour.
+            LogoHost.BeginAnimation(WidthProperty,
+                new DoubleAnimation(main ? LogoWidth : 0, TimeSpan.FromMilliseconds(320))
+                { EasingFunction = ease });
+            LogoHost.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(main ? 1 : 0, TimeSpan.FromMilliseconds(main ? 320 : 160)));
+            // Le pictogramme change en tournant d'un quart de tour.
+            SettingsSpin.BeginAnimation(RotateTransform.AngleProperty,
+                new DoubleAnimation(forward ? -90 : 90, 0, TimeSpan.FromMilliseconds(340))
+                { EasingFunction = ease });
+            SettingsButton.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240)));
+        }
+        else
+        {
+            SnapPanel(leaving, visible: false);
+            SnapPanel(arriving, visible: true);
+            LogoHost.BeginAnimation(WidthProperty, null);
+            LogoHost.BeginAnimation(OpacityProperty, null);
+            LogoHost.Width = main ? LogoWidth : 0;
+            LogoHost.Opacity = main ? 1 : 0;
+        }
+
         SettingsButton.Content = target switch
         {
             AppPage.Main => "",     // engrenage
@@ -328,42 +440,242 @@ public partial class MainWindow : Window
             ? Loc.T("Settings", "Réglages") : Loc.T("Back", "Retour");
     }
 
-    /// <summary>Glissement horizontal + fondu, sens selon la navigation.</summary>
-    private static void AnimatePanelIn(UIElement panel, bool fromRight)
+    private static TranslateTransform SlideOf(UIElement panel)
     {
         if (panel.RenderTransform is not TranslateTransform slide)
         {
             slide = new TranslateTransform();
             panel.RenderTransform = slide;
         }
-        slide.BeginAnimation(TranslateTransform.XProperty,
-            new DoubleAnimation(fromRight ? 34 : -34, 0, TimeSpan.FromMilliseconds(240))
-            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-        panel.BeginAnimation(OpacityProperty,
-            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
+        return slide;
     }
+
+    /// <summary>
+    /// Arrivée d'une page : long glissement amorti, et un fondu qui démarre
+    /// doucement — la page quittée a le temps de s'effacer, les deux textes
+    /// ne se lisent jamais l'un sur l'autre.
+    /// </summary>
+    private static void AnimatePanelIn(UIElement panel, bool fromRight)
+    {
+        panel.Visibility = Visibility.Visible;
+        panel.IsHitTestVisible = true;
+        SlideOf(panel).BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(fromRight ? 44 : -44, 0, TimeSpan.FromMilliseconds(380))
+            { EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
+        panel.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280))
+            { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } });
+        Cascade(panel);
+    }
+
+    /// <summary>
+    /// Entrée en cascade : chaque bloc de la page (en-tête, carte…) monte et
+    /// apparaît un instant après le précédent. Images clés plutôt que
+    /// BeginTime : avant son départ, une animation différée laisserait voir
+    /// le bloc à pleine opacité.
+    /// </summary>
+    private static void Cascade(UIElement page)
+    {
+        if (page is not System.Windows.Controls.Panel panel) return;
+        int rank = 0;
+        foreach (UIElement block in panel.Children)
+        {
+            if (block.Visibility != Visibility.Visible) continue;
+            var start = TimeSpan.FromMilliseconds(32 * rank++);
+            var end = start + TimeSpan.FromMilliseconds(260);
+
+            var fade = new DoubleAnimationUsingKeyFrames();
+            fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, TimeSpan.Zero));
+            fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, start));
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, end));
+            block.BeginAnimation(OpacityProperty, fade);
+
+            var rise = new DoubleAnimationUsingKeyFrames();
+            rise.KeyFrames.Add(new DiscreteDoubleKeyFrame(14, TimeSpan.Zero));
+            rise.KeyFrames.Add(new DiscreteDoubleKeyFrame(14, start));
+            rise.KeyFrames.Add(new EasingDoubleKeyFrame(0, end,
+                new CubicEase { EasingMode = EasingMode.EaseOut }));
+            SlideOf(block).BeginAnimation(TranslateTransform.YProperty, rise);
+        }
+    }
+
+    /// <summary>Petit rebond d'échelle, pour marquer un changement (pictogramme, logo).</summary>
+    private static void Pop(ScaleTransform scale, double from, int ms = 320)
+    {
+        var bounce = new DoubleAnimation(from, 1, TimeSpan.FromMilliseconds(ms))
+        { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.7 } };
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, bounce);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, bounce);
+    }
+
+    private readonly RotateTransform _logoTilt = new();
+    private readonly TranslateTransform _logoHop = new();
+    private bool _waddling;
+
+    /// <summary>
+    /// Le canard se dandine sous le pointeur : il penche d'un côté puis de
+    /// l'autre, de moins en moins, avec deux petits sauts. Un dandinement
+    /// en cours va à son terme — repasser dessus ne le fait pas bégayer.
+    /// </summary>
+    private void WaddleLogo()
+    {
+        if (_waddling) return;
+        _waddling = true;
+
+        static DoubleAnimationUsingKeyFrames Keys(params (double Value, int Ms)[] steps)
+        {
+            var keys = new DoubleAnimationUsingKeyFrames();
+            foreach (var (value, ms) in steps)
+                keys.KeyFrames.Add(new EasingDoubleKeyFrame(value, TimeSpan.FromMilliseconds(ms),
+                    new SineEase { EasingMode = EasingMode.EaseInOut }));
+            return keys;
+        }
+
+        var tilt = Keys((-14, 110), (12, 260), (-9, 410), (6, 550), (0, 700));
+        tilt.Completed += (_, _) => _waddling = false;
+        _logoTilt.BeginAnimation(RotateTransform.AngleProperty, tilt);
+        _logoHop.BeginAnimation(TranslateTransform.YProperty,
+            Keys((-3, 110), (0, 260), (-2, 410), (0, 550)));
+    }
+
+    private readonly ScaleTransform _logoPop = new();
+    private readonly ScaleTransform _mutePop = new();
+
+    /// <summary>
+    /// Sélecteur segmenté : une seule pastille, glissée derrière les segments,
+    /// qui coulisse vers celui qu'on coche (les segments eux-mêmes n'en ont
+    /// pas, voir le style Segment). Recalée sans animation quand la taille
+    /// change — notamment au premier affichage.
+    /// </summary>
+    private void AttachSlidingPill(System.Windows.Controls.Grid segments)
+    {
+        var buttons = segments.Children.OfType<System.Windows.Controls.RadioButton>().ToList();
+        var slide = new TranslateTransform();
+        var pill = new System.Windows.Controls.Border
+        {
+            CornerRadius = new CornerRadius(7),
+            Background = (System.Windows.Media.Brush)FindResource("SegmentActive"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Margin = new Thickness(2),
+            RenderTransform = slide,
+            IsHitTestVisible = false,
+            Opacity = 0,
+        };
+        System.Windows.Controls.Grid.SetColumnSpan(pill, buttons.Count);
+        segments.Children.Insert(0, pill);
+
+        void Move(bool animate)
+        {
+            int index = buttons.FindIndex(b => b.IsChecked == true);
+            double step = segments.ActualWidth / buttons.Count;
+            if (index < 0 || step <= 4)
+            {
+                pill.Opacity = 0;
+                return;
+            }
+            // Pas encore posée : elle n'a pas d'endroit d'où glisser.
+            if (pill.Opacity == 0) animate = false;
+            pill.Opacity = 1;
+            pill.Width = step - 4;
+            if (animate)
+            {
+                slide.BeginAnimation(TranslateTransform.XProperty,
+                    new DoubleAnimation(index * step, TimeSpan.FromMilliseconds(280))
+                    { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            }
+            else
+            {
+                slide.BeginAnimation(TranslateTransform.XProperty, null);
+                slide.X = index * step;
+            }
+        }
+
+        segments.SizeChanged += (_, _) => Move(animate: false);
+        foreach (var button in buttons) button.Checked += (_, _) => Move(animate: true);
+    }
+
+    /// <summary>Départ d'une page : bref fondu en glissant du côté opposé.</summary>
+    private void AnimatePanelOut(UIElement panel, bool toLeft)
+    {
+        panel.IsHitTestVisible = false;
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(150));
+        // Si on est revenu sur cette page entre-temps, elle reste affichée.
+        fade.Completed += (_, _) =>
+        {
+            if (PanelFor(_page) != panel) panel.Visibility = Visibility.Collapsed;
+            if (_page == AppPage.Main) PageScroll.Height = double.NaN;
+        };
+        SlideOf(panel).BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(toLeft ? -30 : 30, TimeSpan.FromMilliseconds(180))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+        panel.BeginAnimation(OpacityProperty, fade);
+    }
+
+    /// <summary>Place une page dans son état final, sans animation.</summary>
+    private static void SnapPanel(UIElement panel, bool visible)
+    {
+        SlideOf(panel).BeginAnimation(TranslateTransform.XProperty, null);
+        panel.BeginAnimation(OpacityProperty, null);
+        panel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        panel.IsHitTestVisible = visible;
+    }
+
+    /// <summary>Change un texte d'état avec un court fondu, s'il change vraiment.</summary>
+    private static void SetTextFaded(System.Windows.Controls.TextBlock block, string text)
+    {
+        if (block.Text == text) return;
+        block.Text = text;
+        block.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));
+    }
+
+    // Là où le Gestionnaire des tâches (onglet Démarrage) et les Paramètres
+    // de Windows notent qu'une entrée Run est désactivée : premier octet
+    // impair = désactivée, l'entrée Run restant en place.
+    private const string RunApprovedPath =
+        @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+    private bool _syncingAutostart;
 
     private static bool IsAutostartEnabled()
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath);
-        return key?.GetValue(RunValueName) != null;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKeyPath);
+            if (key?.GetValue(RunValueName) == null) return false;
+            using var approved = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunApprovedPath);
+            return approved?.GetValue(RunValueName) is not byte[] { Length: > 0 } state
+                || (state[0] & 1) == 0;
+        }
+        catch { return false; }
     }
 
     private void Autostart_Changed(object sender, RoutedEventArgs e)
     {
-        if (!IsLoaded) return;
+        if (!IsLoaded || _syncingAutostart) return;
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunKeyPath);
+            using var approved = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunApprovedPath);
             if (AutostartToggle.IsChecked == true)
             {
                 string exe = Environment.ProcessPath
                     ?? System.IO.Path.Combine(AppContext.BaseDirectory, "AudioShare.exe");
                 key.SetValue(RunValueName, $"\"{exe}\"");
+                // Lève une désactivation faite depuis Windows, sinon l'entrée
+                // existerait sans que l'app démarre.
+                approved.DeleteValue(RunValueName, throwOnMissingValue: false);
             }
             else
             {
                 key.DeleteValue(RunValueName, throwOnMissingValue: false);
+                // L'installateur réécrit l'entrée Run à chaque mise à jour si
+                // la case avait été cochée à l'installation : la marque
+                // « désactivée » fait tenir le choix malgré tout.
+                var state = new byte[12];
+                state[0] = 3;
+                BitConverter.GetBytes(DateTime.UtcNow.ToFileTimeUtc()).CopyTo(state, 4);
+                approved.SetValue(RunValueName, state, Microsoft.Win32.RegistryValueKind.Binary);
             }
         }
         catch (Exception ex)
@@ -520,7 +832,7 @@ public partial class MainWindow : Window
         try
         {
             await Updater.CheckAndUpdateAsync(
-                msg => Dispatcher.Invoke(() => UpdateStatus.Text = msg),
+                msg => Dispatcher.Invoke(() => SetTextFaded(UpdateStatus, msg)),
                 verbose: true);
         }
         finally
@@ -587,9 +899,9 @@ public partial class MainWindow : Window
         if (!statusWasVisible && SendStatus.Visibility == Visibility.Visible)
             SendStatus.BeginAnimation(OpacityProperty,
                 new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)));
-        VolumeHeader.Text = _sender.IsRunning
+        SetTextFaded(VolumeHeader, _sender.IsRunning
             ? Loc.T("SENT AUDIO", "SON ÉMIS")
-            : Loc.T("RECEIVED AUDIO", "SON REÇU");
+            : Loc.T("RECEIVED AUDIO", "SON REÇU"));
         UpdateTrayIcon();
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
@@ -912,6 +1224,7 @@ public partial class MainWindow : Window
     private void UpdateMuteIcon()
     {
         double v = VolumeSlider.Value;
+        var before = MuteButton.Content;
         MuteButton.Content = v switch
         {
             <= 0.001 => "", // muet
@@ -922,6 +1235,14 @@ public partial class MainWindow : Window
         MuteButton.ToolTip = v <= 0.001
             ? Loc.T("Unmute", "Rétablir le son")
             : Loc.T("Mute", "Couper le son");
+
+        // Le pictogramme change de palier : petit rebond pour le signaler.
+        if (IsVisible && !Equals(before, MuteButton.Content))
+        {
+            MuteButton.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            MuteButton.RenderTransform = _mutePop;
+            Pop(_mutePop, 0.78, 260);
+        }
     }
 
     // ---------- Balance ----------
@@ -1008,7 +1329,8 @@ public partial class MainWindow : Window
     private void ShowFlyout()
     {
         // Le panneau rouvre toujours sur la page principale.
-        if (_page != AppPage.Main) NavigateTo(AppPage.Main, forward: false);
+        if (_page != AppPage.Main) NavigateTo(AppPage.Main, forward: false, animate: false);
+        _hiding = false;
         PlaceBottomRight();
         Show();
         Activate();
@@ -1023,13 +1345,33 @@ public partial class MainWindow : Window
             { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
         Root.BeginAnimation(OpacityProperty,
             new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
+        Cascade(MainPanel);
+        Pop(_logoPop, 0.55, 420);
     }
 
+    private bool _hiding;
+
+    /// <summary>
+    /// Le contenu retombe en fondu avant que la fenêtre disparaisse — bref,
+    /// pour ne pas faire attendre. Rouvert entre-temps (ShowFlyout remet
+    /// _hiding à false), le masquage en cours est abandonné.
+    /// </summary>
     private void HideFlyout()
     {
-        if (!IsVisible) return;
+        if (!IsVisible || _hiding) return;
+        _hiding = true;
         _lastAutoHide = DateTime.UtcNow;
-        Hide();
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(110));
+        fade.Completed += (_, _) =>
+        {
+            if (!_hiding) return;
+            _hiding = false;
+            Hide();
+        };
+        RootSlide.BeginAnimation(TranslateTransform.YProperty,
+            new DoubleAnimation(16, TimeSpan.FromMilliseconds(110))
+            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn } });
+        Root.BeginAnimation(OpacityProperty, fade);
         if (!_trayHintShown)
         {
             _trayHintShown = true;

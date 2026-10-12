@@ -113,17 +113,15 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Grid Margin="2">
-                        <Border x:Name="Pill" CornerRadius="7"
-                                Background="{StaticResource SegmentActive}" Opacity="0">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="4" ShadowDepth="1"
-                                                  Direction="270" Opacity="0.2"/>
-                            </Border.Effect>
-                        </Border>
-                        <TextBlock Text="{TemplateBinding Content}"
+                    <!-- Pas de pastille ici : une seule pastille par sélecteur,
+                         posée en code (MainWindow.AttachSlidingPill), glisse
+                         d'un segment à l'autre. Le fond transparent garde
+                         tout le segment cliquable. -->
+                    <Grid Margin="2" Background="#00FFFFFF">
+                        <TextBlock x:Name="Text" Text="{TemplateBinding Content}"
                                    FontFamily="{StaticResource Body}" FontSize="13"
                                    FontWeight="Medium" Foreground="{StaticResource Label}"
+                                   Opacity="0.6"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Grid>
                     <ControlTemplate.Triggers>
@@ -131,18 +129,18 @@
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Pill"
+                                        <DoubleAnimation Storyboard.TargetName="Text"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="1" Duration="0:0:0.18"/>
+                                                         To="1" Duration="0:0:0.2"/>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Pill"
+                                        <DoubleAnimation Storyboard.TargetName="Text"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="0" Duration="0:0:0.18"/>
+                                                         To="0.6" Duration="0:0:0.2"/>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
@@ -470,12 +468,45 @@
                                 <Thumb Width="18" Height="18">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
-                                            <Ellipse Fill="White">
+                                            <Ellipse Fill="White" RenderTransformOrigin="0.5,0.5">
+                                                <Ellipse.RenderTransform>
+                                                    <ScaleTransform x:Name="Grow" ScaleX="1" ScaleY="1"/>
+                                                </Ellipse.RenderTransform>
                                                 <Ellipse.Effect>
                                                     <DropShadowEffect BlurRadius="5" ShadowDepth="1"
                                                                       Direction="270" Opacity="0.3"/>
                                                 </Ellipse.Effect>
                                             </Ellipse>
+                                            <!-- La pastille grossit sous le pointeur et le
+                                                 reste pendant le glisser (souris capturée) -->
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Trigger.EnterActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetName="Grow"
+                                                                                 Storyboard.TargetProperty="ScaleX"
+                                                                                 To="1.22" Duration="0:0:0.12"/>
+                                                                <DoubleAnimation Storyboard.TargetName="Grow"
+                                                                                 Storyboard.TargetProperty="ScaleY"
+                                                                                 To="1.22" Duration="0:0:0.12"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </Trigger.EnterActions>
+                                                    <Trigger.ExitActions>
+                                                        <BeginStoryboard>
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetName="Grow"
+                                                                                 Storyboard.TargetProperty="ScaleX"
+                                                                                 To="1" Duration="0:0:0.2"/>
+                                                                <DoubleAnimation Storyboard.TargetName="Grow"
+                                                                                 Storyboard.TargetProperty="ScaleY"
+                                                                                 To="1" Duration="0:0:0.2"/>
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </Trigger.ExitActions>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Thumb.Template>
                                 </Thumb>
@@ -506,15 +537,56 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ListBoxItem">
-                                <Border x:Name="Bg" CornerRadius="9" Background="#00FFFFFF" Padding="10,9">
-                                    <ContentPresenter/>
-                                </Border>
+                                <!-- Survol et sélection : deux calques dont on
+                                     anime l'opacité, au lieu de changer le fond
+                                     d'un coup -->
+                                <Grid Background="#00FFFFFF">
+                                    <Border x:Name="Hover" CornerRadius="9" Background="#12FFFFFF" Opacity="0"/>
+                                    <Border x:Name="Sel" CornerRadius="9" Background="#2E0A84FF" Opacity="0"/>
+                                    <Border Padding="10,9">
+                                        <ContentPresenter/>
+                                    </Border>
+                                </Grid>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bg" Property="Background" Value="#12FFFFFF"/>
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Hover"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     To="1" Duration="0:0:0.12"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Hover"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     To="0" Duration="0:0:0.25"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
                                     </Trigger>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter TargetName="Bg" Property="Background" Value="#2E0A84FF"/>
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Sel"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     To="1" Duration="0:0:0.2"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Sel"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     To="0" Duration="0:0:0.3"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -547,10 +619,45 @@
                             <TextBlock Text="&#xE76C;" FontSize="12"
                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                        Foreground="{StaticResource LabelTertiary}"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       RenderTransformOrigin="0.5,0.5">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform x:Name="Turn" Angle="0"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
                         </Grid>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <!-- Ligne dépliable : Tag="open" (posé en code) fait
+                             pivoter le chevron vers le bas -->
+                        <Trigger Property="Tag" Value="open">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Turn"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         To="90" Duration="0:0:0.28">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Turn"
+                                                         Storyboard.TargetProperty="Angle"
+                                                         To="0" Duration="0:0:0.28">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
@@ -603,6 +710,77 @@
         </Setter>
     </Style>
 
+    <!-- Barre de défilement : un simple trait, sans flèches -->
+    <Style x:Key="ThinScrollBar" TargetType="ScrollBar">
+        <Setter Property="Width" Value="4"/>
+        <Setter Property="MinWidth" Value="4"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track.Thumb>
+                            <Thumb>
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb">
+                                        <Border CornerRadius="2" Background="#66FFFFFF"/>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Zone défilante du flyout : la barre flotte par-dessus le contenu
+         (elle ne lui prend aucune largeur) et n'apparaît, en fondu, que
+         sous le pointeur et s'il y a de quoi défiler -->
+    <Style x:Key="OverlayScroll" TargetType="ScrollViewer">
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollViewer">
+                    <!-- Fond transparent : la molette agit aussi entre les cartes -->
+                    <Grid Background="#00FFFFFF">
+                        <ScrollContentPresenter/>
+                        <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   Style="{StaticResource ThinScrollBar}"
+                                   HorizontalAlignment="Right" Margin="0,4,7,14" Opacity="0"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Value="{TemplateBinding VerticalOffset}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PART_VerticalScrollBar"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.15"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="PART_VerticalScrollBar"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.4"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Liste déroulante minimale -->
     <Style x:Key="PlainCombo" TargetType="ComboBox">
         <Setter Property="Cursor" Value="Hand"/>
@@ -622,6 +800,8 @@
                                             <ContentPresenter Content="{Binding SelectionBoxItem,
                                                               RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                               ContentTemplate="{Binding SelectionBoxItemTemplate,
+                                                              RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              TextElement.Foreground="{Binding Foreground,
                                                               RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                               VerticalAlignment="Center" Margin="0,0,6,0"/>
                                             <TextBlock Text="⌄" FontSize="13" Margin="0,-4,0,0"
@@ -657,15 +837,36 @@
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="ComboBoxItem">
-                                <Border x:Name="Bg" CornerRadius="8" Padding="11,8" Background="#00FFFFFF">
-                                    <ContentPresenter/>
-                                </Border>
+                                <Grid Background="#00FFFFFF">
+                                    <Border x:Name="Sel" CornerRadius="8" Background="#2E0A84FF" Opacity="0"/>
+                                    <Border x:Name="Hover" CornerRadius="8" Background="#1FFFFFFF" Opacity="0"/>
+                                    <Border Padding="11,8">
+                                        <ContentPresenter/>
+                                    </Border>
+                                </Grid>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bg" Property="Background" Value="#1FFFFFFF"/>
+                                        <Trigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Hover"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     To="1" Duration="0:0:0.1"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.EnterActions>
+                                        <Trigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetName="Hover"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     To="0" Duration="0:0:0.2"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </Trigger.ExitActions>
                                     </Trigger>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter TargetName="Bg" Property="Background" Value="#2E0A84FF"/>
+                                        <Setter TargetName="Sel" Property="Opacity" Value="1"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>

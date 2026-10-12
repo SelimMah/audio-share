@@ -26,16 +26,53 @@
             <StackPanel Margin="20,18,20,20">
 
                 <Grid>
-                    <TextBlock x:Name="TitleText" Text="Audio Share"
-                               FontFamily="{StaticResource Display}"
-                               FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}"
-                               Margin="4,0,0,0"/>
+                    <StackPanel Orientation="Horizontal" Margin="0">
+                        <!-- Logo : présent sur la page principale seulement, il se
+                             replie (largeur animée en code) quand on entre dans les
+                             Réglages et le titre glisse à sa place. Les tracés
+                             viennent de DuckLogo, posés en code. -->
+                        <Border x:Name="LogoHost" Width="44" Background="#00FFFFFF" ClipToBounds="True"
+                                VerticalAlignment="Center">
+                            <Viewbox x:Name="LogoBox" RenderTransformOrigin="0.5,0.5" Width="30" Height="30" Margin="4,3" HorizontalAlignment="Left">
+                                <Canvas Width="512" Height="512">
+                                    <Path x:Name="LogoBeak" Fill="#FF7A10"/>
+                                    <Path x:Name="LogoWing" Fill="#188C46"
+                                          Stroke="#188C46" StrokeThickness="6"/>
+                                    <Path x:Name="LogoBody" Fill="{StaticResource Label}"/>
+                                </Canvas>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock x:Name="TitleText" Text="Audio Share"
+                                   FontFamily="{StaticResource Display}"
+                                   FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform x:Name="TitleSlide"/>
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </StackPanel>
                     <Button x:Name="SettingsButton" Content="&#xE713;" Width="32" Height="32"
                             FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
                             Style="{StaticResource ChromeButton}"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
-                            Click="Settings_Click" ToolTip="Réglages"/>
+                            RenderTransformOrigin="0.5,0.5"
+                            Click="Settings_Click" ToolTip="Réglages">
+                        <Button.RenderTransform>
+                            <RotateTransform x:Name="SettingsSpin"/>
+                        </Button.RenderTransform>
+                    </Button>
                 </Grid>
+
+                <!-- Zone défilante : hors de la page principale sa hauteur est
+                     figée (en code) sur celle de la page principale — le
+                     panneau ne change jamais de taille, ce qui dépasse défile.
+                     Marges négatives : elle va jusqu'aux bords de la fenêtre,
+                     pour que les pages qui glissent ne soient pas rognées
+                     au ras des cartes. -->
+                <ScrollViewer x:Name="PageScroll" Style="{StaticResource OverlayScroll}"
+                              Margin="-20,0,-20,-20">
+                <!-- Les pages partagent la même cellule : pendant une transition,
+                     celle qui part et celle qui arrive se superposent en fondu. -->
+                <Grid x:Name="PageHost" Margin="20,0,20,20">
 
                 <!-- Page Réglages : remplace la page principale -->
                 <StackPanel x:Name="SettingsPanel" Visibility="Collapsed">
@@ -56,7 +93,7 @@
                                 <Border CornerRadius="9" Background="{StaticResource SegmentBed}"
                                         Width="170" Height="30"
                                         HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <Grid>
+                                    <Grid x:Name="LangSegments">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
@@ -69,15 +106,6 @@
                                                      Checked="Language_Checked"/>
                                     </Grid>
                                 </Border>
-                            </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}"/>
-                            <Grid x:Name="OutputRow" Height="44">
-                                <TextBlock x:Name="OutputLabel" Text="Received audio output"
-                                           Style="{StaticResource RowLabel}"/>
-                                <ComboBox x:Name="OutputCombo" Style="{StaticResource PlainCombo}"
-                                          MaxWidth="180" DisplayMemberPath="Name"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          SelectionChanged="Output_Changed"/>
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}"/>
                             <Grid Height="44">
@@ -95,10 +123,32 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock x:Name="NetworkHeader" Text="NETWORK" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource Card}" Padding="16,4">
+                    <!-- Avancé : les réglages qu'on ne touche presque jamais
+                         (sortie, destination, compression) et l'accès au
+                         diagnostic. La ligne déplie son contenu sur place
+                         (hauteur de AdvancedHost animée en code). -->
+                    <Border Style="{StaticResource Card}" Padding="6,4" Margin="0,14,0,0">
                         <StackPanel>
-                            <Grid x:Name="DestRow" Height="44">
+                        <Button x:Name="AdvancedNavButton" Style="{StaticResource NavRow}"
+                                Click="AdvancedNav_Click">
+                            <TextBlock x:Name="AdvancedNavLabel" Text="Advanced"
+                                       FontFamily="{StaticResource Body}" FontSize="14"
+                                       Foreground="{StaticResource Label}"/>
+                        </Button>
+                        <Border x:Name="AdvancedHost" Height="0" Opacity="0"
+                                ClipToBounds="True" IsHitTestVisible="False">
+                        <StackPanel x:Name="AdvancedContent" VerticalAlignment="Top">
+                        <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
+                        <Grid x:Name="OutputRow" Height="44" Margin="10,0">
+                            <TextBlock x:Name="OutputLabel" Text="Received audio output"
+                                       Style="{StaticResource RowLabel}"/>
+                            <ComboBox x:Name="OutputCombo" Style="{StaticResource PlainCombo}"
+                                      MaxWidth="180" DisplayMemberPath="Name"
+                                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      SelectionChanged="Output_Changed"/>
+                        </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
+                            <Grid x:Name="DestRow" Height="44" Margin="10,0">
                                 <TextBlock x:Name="DestLabel" Text="Send to"
                                            Style="{StaticResource RowLabel}"/>
                                 <ComboBox x:Name="DestCombo" Style="{StaticResource PlainCombo}"
@@ -106,24 +156,24 @@
                                           HorizontalAlignment="Right" VerticalAlignment="Center"
                                           SelectionChanged="Dest_Changed"/>
                             </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}"/>
-                            <Grid x:Name="OpusRow" Height="44">
+                            <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
+                            <Grid x:Name="OpusRow" Height="44" Margin="10,0">
                                 <TextBlock x:Name="OpusLabel" Text="Opus compression (Wi-Fi)"
                                            Style="{StaticResource RowLabel}"/>
                                 <CheckBox x:Name="OpusToggle" Style="{StaticResource Switch}"
                                           HorizontalAlignment="Right" VerticalAlignment="Center"
                                           Checked="Opus_Changed" Unchecked="Opus_Changed"/>
                             </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource Card}" Padding="6,4" Margin="0,14,0,0">
+                            <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
                         <Button x:Name="DiagNavButton" Style="{StaticResource NavRow}"
                                 Click="DiagNav_Click">
                             <TextBlock x:Name="DiagNavLabel" Text="Diagnostics"
                                        FontFamily="{StaticResource Body}" FontSize="14"
                                        Foreground="{StaticResource Label}"/>
                         </Button>
+                        </StackPanel>
+                        </Border>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
 
@@ -287,7 +337,7 @@
                 <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
                         Margin="0,0,0,2"
                         ToolTip="Only affects the received audio (phone or other PC) — never this PC's own sounds.">
-                    <Grid>
+                    <Grid x:Name="BalanceSegments">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
@@ -306,6 +356,8 @@
                 </Border>
 
                 </StackPanel>
+                </Grid>
+                </ScrollViewer>
             </StackPanel>
     </Grid>
 </Window>
