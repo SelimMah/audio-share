@@ -47,6 +47,8 @@ internal sealed class NetworkSender : IDisposable
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
     public string State => _state;
+    /// <summary>Un récepteur est joint et le flux part vers lui.</summary>
+    public bool IsStreaming => IsRunning && _controlTarget != null;
 
     private volatile float _level;
     private long _levelAt;

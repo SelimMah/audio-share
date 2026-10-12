@@ -7,7 +7,7 @@ namespace AudioShare;
 /// <summary>
 /// Icône de la zone de notification, avec son menu.
 /// L'icône est dessinée à l'exécution : pas de fichier .ico à embarquer,
-/// et elle change de couleur selon que la réception est active ou non.
+/// et elle prend ses couleurs quand un autre appareil est relié.
 /// </summary>
 internal sealed class TrayIcon : IDisposable
 {
@@ -51,7 +51,7 @@ internal sealed class TrayIcon : IDisposable
             if (e.Button == MouseButtons.Left) ShowRequested?.Invoke();
         };
         ApplyLanguage();
-        SetActive(false);
+        SetConnected(false);
     }
 
     /// <summary>Textes du menu dans la langue courante (appelé au changement).</summary>
@@ -77,13 +77,34 @@ internal sealed class TrayIcon : IDisposable
         _stereo.Checked = !_left.Checked && !_right.Checked;
     }
 
-    /// <summary>Icône colorée quand la réception tourne, grise sinon.</summary>
-    public void SetActive(bool active)
+    private (bool Connected, bool Light)? _drawn;
+
+    /// <summary>Logo en couleurs quand un autre appareil est relié, d'une
+    /// seule teinte sinon.</summary>
+    public void SetConnected(bool connected)
     {
+        // Appelé à chaque rafraîchissement d'état : ne redessiner que si
+        // l'icône change vraiment (le thème de la barre peut aussi basculer).
+        var wanted = (connected, TaskbarIsLight());
+        if (_drawn == wanted) return;
+        _drawn = wanted;
+
         var previous = _current;
-        _current = Draw(active);
+        _current = Draw(connected, wanted.Item2);
         _icon.Icon = _current;
         previous?.Dispose();
+    }
+
+    /// <summary>Barre des tâches claire : un trait blanc y serait invisible.</summary>
+    private static bool TaskbarIsLight()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("SystemUsesLightTheme") is int v && v != 0;
+        }
+        catch { return false; }
     }
 
     public void Notify(string title, string message)
@@ -93,61 +114,26 @@ internal sealed class TrayIcon : IDisposable
         _icon.ShowBalloonTip(3000);
     }
 
-    /// <summary>Copie de développement : icône orange avec pastille, pour ne
-    /// jamais la confondre avec l'app installée (bleue).</summary>
+    /// <summary>Copie de développement : pastille orange, pour ne jamais la
+    /// confondre avec l'app installée.</summary>
     private static readonly bool Dev = !Updater.IsInstalledCopy;
 
     /// <summary>
-    /// Dessine l'icône en 64×64 (Windows la réduit proprement) : ondes sonores
-    /// fluides et concentriques, émanant d'une source centrale. Bleu/violet pour
-    /// l'app installée, orange/rose pour la copie de développement.
+    /// Dessine l'icône en 64×64 (Windows la réduit proprement) : le logo
+    /// tout blanc (noir sur une barre des tâches claire), avec son bec orange
+    /// quand un appareil est relié.
     /// </summary>
-    private static Icon Draw(bool active)
+    private static Icon Draw(bool connected, bool lightTaskbar)
     {
-        Color c1, c2;
-        if (active)
-        {
-            c1 = Dev ? Color.FromArgb(255, 159, 10) : Color.FromArgb(10, 132, 255);
-            c2 = Dev ? Color.FromArgb(255, 55, 95) : Color.FromArgb(191, 90, 242);
-        }
-        else
-        {
-            c1 = Color.FromArgb(128, 128, 134);
-            c2 = Color.FromArgb(70, 70, 74);
-        }
-
         using var bmp = new Bitmap(64, 64);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Color.Transparent);
 
-            var rect = new Rectangle(2, 2, 60, 60);
-            using var bg = new LinearGradientBrush(rect, c1, c2, 55f);
-            g.FillEllipse(bg, rect);
-
-            var cx = 32f;
-            var cy = 32f;
-
-            // Trois ondes concentriques émanant du centre
-            var waveWidths = new[] { 2.4f, 1.8f, 1.2f };
-            var waveRadii = new[] { 7f, 14f, 21f };
-
-            for (int i = 0; i < 3; i++)
-            {
-                using var wave = new Pen(Color.White, waveWidths[i])
-                {
-                    StartCap = LineCap.Round,
-                    EndCap = LineCap.Round
-                };
-
-                var radius = waveRadii[i];
-                // Arc de 220° pour un effet de flux directionnel (légèrement vers le haut/droite)
-                g.DrawArc(wave, cx - radius, cy - radius, radius * 2, radius * 2, -20, 220);
-            }
-
-            // Point central blanc pour l'origine des ondes
-            g.FillEllipse(Brushes.White, cx - 3.5f, cy - 3.5f, 7f, 7f);
+            DuckLogo.Draw(g, new RectangleF(0, 0, 64, 64),
+                lightTaskbar ? Color.Black : Color.White, connected);
 
             // Pastille « dev » en bas à droite, lisible même en 16×16
             if (Dev)

@@ -2,7 +2,7 @@
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
 #define MyAppName "Audio Share"
-#define MyAppVersion "1.6.12"
+#define MyAppVersion "1.6.13"
 #define MyAppExeName "AudioShare.exe"
 
 ; Garde-fou : compiler depuis un dossier publish\ périmé produit un

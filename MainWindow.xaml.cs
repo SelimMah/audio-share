@@ -548,6 +548,7 @@ public partial class MainWindow : Window
             NetworkStatus.Text = Loc.T("listening", "en écoute");
             NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("LabelTertiary");
         }
+        UpdateTrayIcon();
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
     }
@@ -589,6 +590,7 @@ public partial class MainWindow : Window
         VolumeHeader.Text = _sender.IsRunning
             ? Loc.T("SENT AUDIO", "SON ÉMIS")
             : Loc.T("RECEIVED AUDIO", "SON REÇU");
+        UpdateTrayIcon();
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
 
@@ -1155,7 +1157,7 @@ public partial class MainWindow : Window
         if (connection.State != AudioPlaybackConnectionState.Opened)
             dev.Status = Loc.T("waiting", "en attente");
         dev.IsActive = true;
-        _tray.SetActive(true);
+        UpdateTrayIcon();
 
         // Tente d'ouvrir le flux audio toutes les 2 s jusqu'à ce que le téléphone soit connecté
         _retryUntil = retryFor is { } window ? DateTime.Now + window : DateTime.MaxValue;
@@ -1186,11 +1188,12 @@ public partial class MainWindow : Window
             _wasOpened = true;
             _retryTimer?.Stop();
             dev.Status = Loc.T("connected", "connecté");
-            _tray.SetActive(true);
+            UpdateTrayIcon();
             return;
         }
 
         dev.Status = Loc.T("waiting", "en attente");
+        UpdateTrayIcon();
         // Pas encore établie : la boucle d'ouverture s'en occupe déjà.
         if (!_wasOpened) return;
 
@@ -1318,7 +1321,20 @@ public partial class MainWindow : Window
             dev.Status = "";
             dev.IsActive = false;
         }
-        _tray.SetActive(false);
+        UpdateTrayIcon();
+    }
+
+    /// <summary>
+    /// Le logo de la zone de notification prend ses couleurs dès qu'un autre
+    /// appareil est réellement relié : téléphone connecté (et pas seulement
+    /// attendu), émetteur réseau reçu, ou récepteur réseau joint.
+    /// </summary>
+    private void UpdateTrayIcon()
+    {
+        bool phone = _activeId != null
+            && _connections.TryGetValue(_activeId, out var connection)
+            && connection.State == AudioPlaybackConnectionState.Opened;
+        _tray.SetConnected(phone || _net.IsReceiving || _sender.IsStreaming);
     }
 
     /// <summary>
