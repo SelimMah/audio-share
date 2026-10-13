@@ -108,6 +108,7 @@ internal sealed class VolumeOsd : Window
         if (!IsVisible)
         {
             Opacity = 0;
+            WindowEffects.ApplyVeil(this); // suit le réglage « mode sombre »
             Show();
         }
         UpdateLayout();

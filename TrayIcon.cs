@@ -42,7 +42,7 @@ internal sealed class TrayIcon : IDisposable
 
         _icon = new NotifyIcon
         {
-            Text = Dev ? "Audio Share (dev)" : "Audio Share",
+            Text = Dev ? "Duckast (dev)" : "Duckast",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -57,7 +57,7 @@ internal sealed class TrayIcon : IDisposable
     /// <summary>Textes du menu dans la langue courante (appelé au changement).</summary>
     public void ApplyLanguage()
     {
-        _show.Text = Loc.T("Show Audio Share", "Afficher Audio Share");
+        _show.Text = Loc.T("Show Duckast", "Afficher Duckast");
         _left.Text = Loc.T("Left", "Gauche");
         _stereo.Text = Loc.T("Stereo", "Stéréo");
         _right.Text = Loc.T("Right", "Droite");

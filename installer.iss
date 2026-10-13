@@ -1,8 +1,11 @@
-; Installateur Audio Share — Inno Setup 6
+; Installateur Duckast — Inno Setup 6
 ; Compiler : iscc installer.iss  (après dotnet publish, voir README)
 
-#define MyAppName "Audio Share"
-#define MyAppVersion "1.7.0"
+; L'app s'appelait « Audio Share » jusqu'en v1.7.0. Seul le nom affiché a
+; changé : l'exe, l'AppId, la clé Run et le nom du setup gardent l'ancien
+; pour que les installations existantes se mettent à jour en place.
+#define MyAppName "Duckast"
+#define MyAppVersion "1.8.0"
 #define MyAppExeName "AudioShare.exe"
 
 ; Garde-fou : compiler depuis un dossier publish\ périmé produit un
@@ -23,7 +26,7 @@ AppId={{7C1E9A4D-52B8-4F63-9A0E-3B2D71C55A10}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=Selim
-DefaultDirName={autopf}\Audio Share
+DefaultDirName={autopf}\Duckast
 DisableProgramGroupPage=yes
 ; Installation par utilisateur : aucun droit administrateur requis
 PrivilegesRequired=lowest
@@ -46,6 +49,11 @@ Name: "autostart"; Description: "Lancer {#MyAppName} au démarrage de Windows"; 
 [Files]
 Source: "publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
+[InstallDelete]
+; Raccourcis de l'ancien nom : sans ça une mise à jour en laisse deux.
+Type: files; Name: "{autoprograms}\Audio Share.lnk"
+Type: files; Name: "{autodesktop}\Audio Share.lnk"
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
@@ -56,7 +64,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-; Installation interactive : case « Lancer Audio Share » en fin d'assistant
+; Installation interactive : case « Lancer Duckast » en fin d'assistant
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
     Flags: nowait postinstall skipifsilent
 ; Mise à jour silencieuse (auto-update) : relancer l'app d'office

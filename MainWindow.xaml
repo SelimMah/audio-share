@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="Audio Share"
+        Title="Duckast"
         Width="400" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="False"
         Background="Transparent"
@@ -42,7 +42,7 @@
                                 </Canvas>
                             </Viewbox>
                         </Border>
-                        <TextBlock x:Name="TitleText" Text="Audio Share"
+                        <TextBlock x:Name="TitleText" Text="Duckast"
                                    FontFamily="{StaticResource Display}"
                                    FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}">
                             <TextBlock.RenderTransform>
@@ -85,6 +85,14 @@
                                 <CheckBox x:Name="AutostartToggle" Style="{StaticResource Switch}"
                                           HorizontalAlignment="Right" VerticalAlignment="Center"
                                           Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
+                            </Grid>
+                            <Border Height="1" Background="{StaticResource Separator}"/>
+                            <Grid Height="44">
+                                <TextBlock x:Name="DarkModeLabel" Text="Dark mode"
+                                           Style="{StaticResource RowLabel}"/>
+                                <CheckBox x:Name="DarkModeToggle" Style="{StaticResource Switch}"
+                                          HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          Checked="DarkMode_Changed" Unchecked="DarkMode_Changed"/>
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}"/>
                             <Grid Height="44">
@@ -259,7 +267,7 @@
 
                         <!-- Réception réseau : toujours active, état à droite -->
                         <Grid x:Name="NetworkRow" Margin="10,8"
-                              ToolTip="Another PC running Audio Share can stream its audio here: turn on “Send” over there, the connection is automatic.">
+                              ToolTip="Another PC running Duckast can stream its audio here: turn on “Send” over there, the connection is automatic.">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="26"/>
                                 <ColumnDefinition Width="*"/>

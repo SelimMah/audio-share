@@ -1,4 +1,4 @@
-# 🔊 Audio Share
+# 🦆 Duckast
 
 Transforme un PC Windows en **enceinte Bluetooth et réseau** : le son d'un
 téléphone (ou d'un autre PC) est joué sur ce PC, avec contrôle du volume et de
@@ -10,7 +10,7 @@ locaux du PC.
 - **Récepteur Bluetooth (A2DP Sink)** via l'API `AudioPlaybackConnection` de
   Windows : appaire ton téléphone, clique dessus dans la liste, connecte-toi
   depuis le téléphone — sa musique sort sur le PC.
-- **Réseau local, dans les deux sens** : chaque instance d'Audio Share écoute
+- **Réseau local, dans les deux sens** : chaque instance de Duckast écoute
   en permanence, et un interrupteur « Envoyer le son de ce PC » capture tout le
   son local et le diffuse en PCM 48 kHz vers l'autre PC, avec découverte
   automatique (UDP) — aucun réglage d'IP. Installe simplement l'app sur les

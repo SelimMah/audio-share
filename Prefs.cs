@@ -9,6 +9,7 @@ internal static class Prefs
     private const string OutputValue = "OutputDeviceId";
     private const string OpusValue = "OpusEnabled";
     private const string TargetValue = "SendTarget";
+    private const string DarkValue = "DarkMode";
 
     private static string? GetString(string name)
     {
@@ -44,7 +45,18 @@ internal static class Prefs
     }
 
     /// <summary>
-    /// Destination de l'émission : nom machine d'un Audio Share précis,
+    /// Mode sombre : voile noir par-dessus l'acrylique du panneau, pour que
+    /// le texte blanc reste lisible devant un fond d'écran clair. Off par
+    /// défaut (acrylique nu).
+    /// </summary>
+    public static bool DarkMode
+    {
+        get => GetString(DarkValue) == "1";
+        set => SetString(DarkValue, value ? "1" : null);
+    }
+
+    /// <summary>
+    /// Destination de l'émission : nom machine d'un Duckast précis,
     /// ou null pour « le premier découvert » (comportement historique).
     /// </summary>
     public static string? SendTarget

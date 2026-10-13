@@ -172,7 +172,7 @@ public partial class MainWindow : Window
         // Mise à jour automatique en arrière-plan : si une nouvelle release
         // existe, l'installateur silencieux remplace l'app et la relance.
         _ = Updater.CheckAndUpdateAsync(msg =>
-            Dispatcher.Invoke(() => _tray.Notify("Audio Share", msg)));
+            Dispatcher.Invoke(() => _tray.Notify("Duckast", msg)));
 
         Loaded += (_, _) => AnimateIn();
     }
@@ -265,6 +265,7 @@ public partial class MainWindow : Window
 
         GeneralHeader.Text = Loc.T("GENERAL", "GÉNÉRAL");
         AutostartLabel.Text = Loc.T("Launch at Windows startup", "Ouvrir au démarrage de Windows");
+        DarkModeLabel.Text = Loc.T("Dark mode", "Mode sombre");
         LanguageLabel.Text = Loc.T("Language", "Langue");
         UpdateLabel.Text = Loc.T("Updates", "Mise à jour");
         CheckUpdateButton.Content = Loc.T("Check", "Vérifier");
@@ -274,8 +275,8 @@ public partial class MainWindow : Window
             "S'applique au son reçu par le réseau. Le son Bluetooth du téléphone suit toujours la sortie par défaut de Windows.");
         DestLabel.Text = Loc.T("Send to", "Envoyer vers");
         DestRow.ToolTip = Loc.T(
-            "Which Audio Share receives this PC's audio. Automatic = the first one found.",
-            "Quel Audio Share reçoit le son de ce PC. Automatique = le premier découvert.");
+            "Which Duckast receives this PC's audio. Automatic = the first one found.",
+            "Quel Duckast reçoit le son de ce PC. Automatique = le premier découvert.");
         OpusLabel.Text = Loc.T("Opus compression (Wi-Fi)", "Compression Opus (Wi-Fi)");
         OpusRow.ToolTip = Loc.T(
             "Compresses the sent stream to 256 kbit/s (transparent) — 6x less bandwidth, useful on busy Wi-Fi.",
@@ -296,8 +297,8 @@ public partial class MainWindow : Window
                                "Aucun téléphone appairé — appaire-le dans les réglages Bluetooth de Windows.");
         NetworkLabel.Text = Loc.T("Local network", "Réseau local");
         NetworkRow.ToolTip = Loc.T(
-            "Another PC running Audio Share can stream its audio here: turn on “Send” over there, the connection is automatic.",
-            "Un autre PC avec Audio Share peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.");
+            "Another PC running Duckast can stream its audio here: turn on “Send” over there, the connection is automatic.",
+            "Un autre PC avec Duckast peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.");
         SendLabel.Text = Loc.T("Send this PC's audio", "Envoyer le son de ce PC");
         BalanceLeft.Content = Loc.T("Left", "Gauche");
         BalanceStereo.Content = Loc.T("Stereo", "Stéréo");
@@ -334,7 +335,7 @@ public partial class MainWindow : Window
 
     private string TitleFor(AppPage page) => page switch
     {
-        AppPage.Main => "Audio Share",
+        AppPage.Main => "Duckast",
         AppPage.Settings => Loc.T("Settings", "Réglages"),
         _ => Loc.T("Diagnostics", "Diagnostic"),
     };
@@ -377,6 +378,9 @@ public partial class MainWindow : Window
             _syncingAutostart = true;
             AutostartToggle.IsChecked = IsAutostartEnabled();
             _syncingAutostart = false;
+            _syncingDarkMode = true;
+            DarkModeToggle.IsChecked = Prefs.DarkMode;
+            _syncingDarkMode = false;
             _syncingLanguage = true;
             LangEnglish.IsChecked = !Loc.French;
             LangFrench.IsChecked = Loc.French;
@@ -513,29 +517,48 @@ public partial class MainWindow : Window
     private bool _waddling;
 
     /// <summary>
-    /// Le canard se dandine sous le pointeur : il penche d'un côté puis de
-    /// l'autre, de moins en moins, avec deux petits sauts. Un dandinement
-    /// en cours va à son terme — repasser dessus ne le fait pas bégayer.
+    /// Le canard se dandine tant que le pointeur est dessus : il penche d'un
+    /// côté puis de l'autre, avec un petit saut à chaque bascule. Quand le
+    /// pointeur s'en va, la bascule en cours se termine et il se redresse —
+    /// jamais de coupure nette, et repasser dessus ne le fait pas bégayer.
     /// </summary>
     private void WaddleLogo()
     {
         if (_waddling) return;
         _waddling = true;
+        SwingLogo(-WaddleAngle);
+    }
 
-        static DoubleAnimationUsingKeyFrames Keys(params (double Value, int Ms)[] steps)
+    private const double WaddleAngle = 12;
+
+    // Le flyout peut se cacher (Échap) pointeur encore dessus : IsMouseOver
+    // reste alors vrai, d'où le test de visibilité pour ne pas boucler caché.
+    private bool LogoHovered => IsVisible && LogoHost.IsMouseOver;
+
+    /// <summary>Une bascule vers <paramref name="angle"/> (0 = se redresser), puis la suivante.</summary>
+    private void SwingLogo(double angle)
+    {
+        var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+        // Une bascule complète va d'un bord à l'autre ; partir du centre ou
+        // y revenir ne fait que la moitié du chemin.
+        bool full = angle != 0 && _logoTilt.Angle != 0;
+        var duration = TimeSpan.FromMilliseconds(full ? 260 : 150);
+
+        var tilt = new DoubleAnimation(angle, duration) { EasingFunction = ease };
+        tilt.Completed += (_, _) =>
         {
-            var keys = new DoubleAnimationUsingKeyFrames();
-            foreach (var (value, ms) in steps)
-                keys.KeyFrames.Add(new EasingDoubleKeyFrame(value, TimeSpan.FromMilliseconds(ms),
-                    new SineEase { EasingMode = EasingMode.EaseInOut }));
-            return keys;
-        }
-
-        var tilt = Keys((-14, 110), (12, 260), (-9, 410), (6, 550), (0, 700));
-        tilt.Completed += (_, _) => _waddling = false;
+            if (angle != 0) SwingLogo(LogoHovered ? -angle : 0);
+            // Redressé : le pointeur a pu revenir entre-temps sans MouseEnter.
+            else if (LogoHovered) SwingLogo(-WaddleAngle);
+            else _waddling = false;
+        };
         _logoTilt.BeginAnimation(RotateTransform.AngleProperty, tilt);
-        _logoHop.BeginAnimation(TranslateTransform.YProperty,
-            Keys((-3, 110), (0, 260), (-2, 410), (0, 550)));
+
+        if (!full) return;
+        var hop = new DoubleAnimationUsingKeyFrames();
+        hop.KeyFrames.Add(new EasingDoubleKeyFrame(-3, TimeSpan.FromMilliseconds(130), ease));
+        hop.KeyFrames.Add(new EasingDoubleKeyFrame(0, duration, ease));
+        _logoHop.BeginAnimation(TranslateTransform.YProperty, hop);
     }
 
     private readonly ScaleTransform _logoPop = new();
@@ -636,6 +659,14 @@ public partial class MainWindow : Window
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
     private bool _syncingAutostart;
+    private bool _syncingDarkMode;
+
+    private void DarkMode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _syncingDarkMode) return;
+        Prefs.DarkMode = DarkModeToggle.IsChecked == true;
+        WindowEffects.ApplyVeil(this);
+    }
 
     private static bool IsAutostartEnabled()
     {
@@ -729,7 +760,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// « Automatique » + la destination mémorisée tout de suite, puis les
-    /// Audio Share réellement découverts (sonde d'une seconde) en différé.
+    /// Duckast réellement découverts (sonde d'une seconde) en différé.
     /// </summary>
     private async void PopulateDestCombo()
     {
@@ -1333,7 +1364,9 @@ public partial class MainWindow : Window
         _hiding = false;
         PlaceBottomRight();
         Show();
-        Activate();
+        WindowEffects.ForceForeground(this);
+        Dispatcher.BeginInvoke(() => WindowEffects.RefreshBackdrop(this),
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         AnimateIn();
     }
 
@@ -1375,8 +1408,8 @@ public partial class MainWindow : Window
         if (!_trayHintShown)
         {
             _trayHintShown = true;
-            _tray.Notify(Loc.T("Audio Share keeps running in the background",
-                               "Audio Share reste actif en arrière-plan"),
+            _tray.Notify(Loc.T("Duckast keeps running in the background",
+                               "Duckast reste actif en arrière-plan"),
                          Loc.T("Click the tray icon to reopen. Quit: right-click the icon.",
                                "Clique sur l'icône pour rouvrir. Quitter : clic droit sur l'icône."));
         }

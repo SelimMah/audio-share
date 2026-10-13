@@ -13,7 +13,7 @@ namespace AudioShare;
 
 /// <summary>
 /// Émission : capture tout le son de ce PC (boucle WASAPI sur la sortie par
-/// défaut), le convertit en PCM 16 bits et l'envoie à un autre Audio Share
+/// défaut), le convertit en PCM 16 bits et l'envoie à un autre Duckast
 /// découvert sur le réseau local. Pendant l'émission :
 ///  - les haut-parleurs locaux sont coupés : muets ET à 0 %, et les touches
 ///    volume sont interceptées avant Windows (VolumeKeyHook) — aucune fuite
@@ -266,7 +266,7 @@ internal sealed class NetworkSender : IDisposable
 
     /// <summary>
     /// Sonde unique pour la liste « Destination » des Réglages : tous les
-    /// Audio Share qui répondent dans le délai (nous-même exclus).
+    /// Duckast qui répondent dans le délai (nous-même exclus).
     /// </summary>
     public static async Task<List<string>> DiscoverAllAsync(int timeoutMs = 1200)
     {
