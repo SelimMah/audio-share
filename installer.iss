@@ -5,7 +5,7 @@
 ; changé : l'exe, l'AppId, la clé Run et le nom du setup gardent l'ancien
 ; pour que les installations existantes se mettent à jour en place.
 #define MyAppName "Duckast"
-#define MyAppVersion "1.8.0"
+#define MyAppVersion "1.8.1"
 #define MyAppExeName "AudioShare.exe"
 
 ; Garde-fou : compiler depuis un dossier publish\ périmé produit un

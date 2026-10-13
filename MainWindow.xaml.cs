@@ -174,7 +174,38 @@ public partial class MainWindow : Window
         _ = Updater.CheckAndUpdateAsync(msg =>
             Dispatcher.Invoke(() => _tray.Notify("Duckast", msg)));
 
-        Loaded += (_, _) => AnimateIn();
+        Loaded += (_, _) =>
+        {
+            ReserveSettingsHeight();
+            AnimateIn();
+        };
+    }
+
+    /// <summary>
+    /// Le panneau garde sur toutes les pages la hauteur de la page principale
+    /// (voir NavigateTo). On donne donc à celle-ci au moins la hauteur des
+    /// Réglages repliés, mesurés hors écran : sinon ils défilent pour
+    /// quelques pixels dès que la page principale est courte.
+    /// </summary>
+    private void ReserveSettingsHeight()
+    {
+        UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
+                                  $"Version installée : {Updater.CurrentVersion}");
+        SettingsPanel.Visibility = Visibility.Visible;
+        SettingsPanel.Measure(new System.Windows.Size(PageHost.ActualWidth, double.PositiveInfinity));
+        MainPanel.MinHeight = Math.Ceiling(SettingsPanel.DesiredSize.Height);
+        SettingsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Toute la ligne d'un interrupteur le bascule, pas seulement la pastille
+    /// (un clic sur l'interrupteur lui-même ne remonte pas jusqu'ici).
+    /// </summary>
+    private void ToggleRow_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Panel row) return;
+        var toggle = row.Children.OfType<System.Windows.Controls.CheckBox>().FirstOrDefault();
+        if (toggle is { IsEnabled: true }) toggle.IsChecked = toggle.IsChecked != true;
     }
 
     protected override void OnSourceInitialized(EventArgs e)

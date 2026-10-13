@@ -79,7 +79,7 @@
                     <TextBlock x:Name="GeneralHeader" Text="GENERAL" Style="{StaticResource SectionHeader}"/>
                     <Border Style="{StaticResource Card}" Padding="16,4">
                         <StackPanel>
-                            <Grid Height="44">
+                            <Grid Height="44" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
                                 <TextBlock x:Name="AutostartLabel" Text="Launch at Windows startup"
                                            Style="{StaticResource RowLabel}"/>
                                 <CheckBox x:Name="AutostartToggle" Style="{StaticResource Switch}"
@@ -87,7 +87,7 @@
                                           Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}"/>
-                            <Grid Height="44">
+                            <Grid Height="44" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
                                 <TextBlock x:Name="DarkModeLabel" Text="Dark mode"
                                            Style="{StaticResource RowLabel}"/>
                                 <CheckBox x:Name="DarkModeToggle" Style="{StaticResource Switch}"
@@ -165,7 +165,7 @@
                                           SelectionChanged="Dest_Changed"/>
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
-                            <Grid x:Name="OpusRow" Height="44" Margin="10,0">
+                            <Grid x:Name="OpusRow" Height="44" Margin="10,0" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
                                 <TextBlock x:Name="OpusLabel" Text="Opus compression (Wi-Fi)"
                                            Style="{StaticResource RowLabel}"/>
                                 <CheckBox x:Name="OpusToggle" Style="{StaticResource Switch}"
@@ -289,7 +289,7 @@
                         <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
 
                         <!-- Émission vers un autre PC -->
-                        <Grid Margin="10,5" Height="34">
+                        <Grid Margin="10,5" Height="34" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
                             <TextBlock x:Name="SendLabel" Text="Send this PC's audio" Style="{StaticResource RowLabel}"/>
                             <CheckBox x:Name="SendToggle" Style="{StaticResource Switch}"
                                       HorizontalAlignment="Right" VerticalAlignment="Center"
