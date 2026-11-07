@@ -12,7 +12,7 @@
     <RootNamespace>AudioShare</RootNamespace>
     <!-- À garder synchronisée avec MyAppVersion dans installer.iss :
          c'est elle que l'app compare à la derniere release GitHub -->
-    <Version>1.8.1</Version>
+    <Version>1.9.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,12 +21,13 @@
     <PackageReference Include="Concentus" Version="2.2.2" />
   </ItemGroup>
 
-  <!-- L'émetteur est un projet séparé : ne pas compiler ses fichiers ici -->
+  <!-- L'émetteur est un projet séparé, et PodGate l'ancien POC dont les
+       fonctionnalités ont été reprises (AirPodsGate) : ne pas compiler leurs fichiers ici -->
   <ItemGroup>
-    <Compile Remove="Sender\**;Emetteur\**" />
-    <Page Remove="Sender\**;Emetteur\**" />
-    <ApplicationDefinition Remove="Sender\**;Emetteur\**" />
-    <None Remove="Sender\**;Emetteur\**" />
+    <Compile Remove="Sender\**;Emetteur\**;PodGate\**" />
+    <Page Remove="Sender\**;Emetteur\**;PodGate\**" />
+    <ApplicationDefinition Remove="Sender\**;Emetteur\**;PodGate\**" />
+    <None Remove="Sender\**;Emetteur\**;PodGate\**" />
   </ItemGroup>
 
 </Project>

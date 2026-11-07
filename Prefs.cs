@@ -65,6 +65,83 @@ internal static class Prefs
         set => SetString(TargetValue, value);
     }
 
+    // ---------- AirPods (ex-PodGate, voir AirPodsGate) ----------
+
+    private const string AirPodsEnabledValue = "AirPodsEnabled";
+    private const string AirPodsAddressValue = "AirPodsAddress";
+    private const string AirPodsNameValue = "AirPodsName";
+    private const string AirPodsModelValue = "AirPodsModel";
+    private const string AirPodsPromptValue = "AirPodsPrompt";
+    private const string AirPodsExpectLockedValue = "AirPodsExpectLocked";
+    private const string AirPodsFirstRunValue = "AirPodsFirstRunDone";
+
+    /// <summary>
+    /// Gestion des AirPods activée : Windows ne s'y connecte plus seul, Duckast
+    /// propose la connexion quand il les détecte. Off par défaut (opt-in).
+    /// </summary>
+    public static bool AirPodsEnabled
+    {
+        get => GetString(AirPodsEnabledValue) == "1";
+        set => SetString(AirPodsEnabledValue, value ? "1" : null);
+    }
+
+    /// <summary>Adresse Bluetooth des écouteurs gérés.</summary>
+    public static ulong? AirPodsAddress
+    {
+        get => ulong.TryParse(GetString(AirPodsAddressValue), System.Globalization.NumberStyles.HexNumber,
+                              System.Globalization.CultureInfo.InvariantCulture, out var a) ? a : null;
+        set => SetString(AirPodsAddressValue, value?.ToString("X12"));
+    }
+
+    public static string? AirPodsName
+    {
+        get => GetString(AirPodsNameValue);
+        set => SetString(AirPodsNameValue, value);
+    }
+
+    /// <summary>Modèle Apple appris (filtre les AirPods des voisins). null = à apprendre.</summary>
+    public static ushort? AirPodsModel
+    {
+        get => ushort.TryParse(GetString(AirPodsModelValue), System.Globalization.NumberStyles.HexNumber,
+                               System.Globalization.CultureInfo.InvariantCulture, out var m) ? m : null;
+        set => SetString(AirPodsModelValue, value?.ToString("X4"));
+    }
+
+    /// <summary>Proposer la connexion quand ils sont détectés (on par défaut).</summary>
+    public static bool AirPodsPrompt
+    {
+        get => GetString(AirPodsPromptValue) != "0";
+        set => SetString(AirPodsPromptValue, value ? null : "0");
+    }
+
+    /// <summary>
+    /// Vrai quand l'audio doit rester verrouillé : si Windows est connecté aux
+    /// AirPods au démarrage suivant, c'est qu'il l'a fait seul.
+    /// </summary>
+    public static bool AirPodsExpectLocked
+    {
+        get => GetString(AirPodsExpectLockedValue) != "0";
+        set => SetString(AirPodsExpectLockedValue, value ? null : "0");
+    }
+
+    /// <summary>
+    /// Faux tant que la gestion n'a jamais tourné : on ne coupe alors pas des
+    /// AirPods en cours d'utilisation au moment de l'activation.
+    /// </summary>
+    public static bool AirPodsFirstRunDone
+    {
+        get => GetString(AirPodsFirstRunValue) == "1";
+        set => SetString(AirPodsFirstRunValue, value ? "1" : null);
+    }
+
+    /// <summary>Efface tous les réglages AirPods (désactivation).</summary>
+    public static void ClearAirPods()
+    {
+        foreach (var name in new[] { AirPodsEnabledValue, AirPodsAddressValue, AirPodsNameValue, AirPodsModelValue,
+                                     AirPodsPromptValue, AirPodsExpectLockedValue, AirPodsFirstRunValue })
+            SetString(name, null);
+    }
+
     // ---------- Garde anti-boucle de mise à jour ----------
     // Si l'installateur d'une release n'apporte pas la version qu'elle
     // annonce (asset erroné publié par erreur — arrivé en v1.6.6), l'app se

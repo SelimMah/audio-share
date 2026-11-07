@@ -139,6 +139,80 @@ internal static class WindowEffects
         DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
     }
 
+    // ---------- Acrylique permanent (popup jamais activée) ----------
+
+    private const int WcaAccentPolicy = 19;
+    private const int AccentEnableAcrylicBlurBehind = 4;
+
+    // Teinte posée sur le flou (AABBGGRR) : gris neutre semi-opaque, réglé
+    // pour approcher le rendu de l'acrylique « transient window » du flyout
+    // en thème sombre.
+    private const uint PopupTint = 0xC85A5655;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct AccentPolicy
+    {
+        public int AccentState;
+        public int AccentFlags;
+        public uint GradientColor;
+        public int AnimationId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowCompositionAttributeData
+    {
+        public int Attribute;
+        public IntPtr Data;
+        public int SizeOfData;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
+
+    /// <summary>
+    /// Habillage de la popup AirPods. L'acrylique « système » (celui du
+    /// flyout) n'est dessiné par DWM que sur une fenêtre active ; or la popup
+    /// ne doit jamais prendre le focus, elle sortait donc en aplat gris. On
+    /// passe par l'ancienne politique d'accent « acrylic blur behind », que
+    /// DWM applique quel que soit l'état d'activation.
+    /// </summary>
+    public static void ApplyPopup(Window window)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        SetWindowLong(hwnd, GwlExStyle, GetWindowLong(hwnd, GwlExStyle) | WsExToolWindow | WsExNoActivate);
+        ApplyVeil(window);
+        if (HwndSource.FromHwnd(hwnd) is { } source)
+            source.CompositionTarget.BackgroundColor = Colors.Transparent;
+
+        int dark = 1;
+        DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref dark, sizeof(int));
+        int corner = CornerRound;
+        DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref corner, sizeof(int));
+        int none = BackdropNone;
+        DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref none, sizeof(int));
+
+        var accent = new AccentPolicy
+        {
+            AccentState = AccentEnableAcrylicBlurBehind,
+            AccentFlags = 2, // teinte appliquée à toute la fenêtre
+            GradientColor = PopupTint,
+        };
+        int size = Marshal.SizeOf<AccentPolicy>();
+        IntPtr ptr = Marshal.AllocHGlobal(size);
+        try
+        {
+            Marshal.StructureToPtr(accent, ptr, false);
+            var data = new WindowCompositionAttributeData { Attribute = WcaAccentPolicy, Data = ptr, SizeOfData = size };
+            SetWindowCompositionAttribute(hwnd, ref data);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(ptr);
+        }
+    }
+
     /// <summary>
     /// Même habillage que le flyout, plus « non activable » : l'aperçu de
     /// volume ne doit jamais voler le focus à l'application au premier plan.

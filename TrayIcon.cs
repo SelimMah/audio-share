@@ -12,12 +12,19 @@ namespace AudioShare;
 internal sealed class TrayIcon : IDisposable
 {
     private readonly NotifyIcon _icon;
-    private readonly ToolStripMenuItem _left, _stereo, _right, _show, _quit;
+    private readonly ToolStripMenuItem _left, _stereo, _right, _show, _quit, _airPods;
+    private readonly ToolStripSeparator _airPodsSeparator;
     private Icon? _current;
 
     public event Action? ShowRequested;
+    /// <summary>Clic gauche sur l'icône (le double-clic arrive ensuite, s'il y en a un).</summary>
+    public event Action? IconClicked;
+    /// <summary>Double-clic gauche sur l'icône : popup AirPods.</summary>
+    public event Action? AirPodsPopupRequested;
     public event Action? QuitRequested;
     public event Action<float, float>? BalanceRequested;
+    /// <summary>Entrée « Connecter / Déconnecter les AirPods ».</summary>
+    public event Action? AirPodsRequested;
 
     public TrayIcon()
     {
@@ -37,6 +44,11 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(_stereo);
         menu.Items.Add(_right);
         menu.Items.Add(new ToolStripSeparator());
+        // AirPods : masqué tant que la gestion n'est pas active (voir SetAirPods).
+        _airPods = new ToolStripMenuItem("", null, (_, _) => AirPodsRequested?.Invoke()) { Visible = false };
+        _airPodsSeparator = new ToolStripSeparator { Visible = false };
+        menu.Items.Add(_airPods);
+        menu.Items.Add(_airPodsSeparator);
         _quit = new ToolStripMenuItem("", null, (_, _) => QuitRequested?.Invoke());
         menu.Items.Add(_quit);
 
@@ -48,7 +60,12 @@ internal sealed class TrayIcon : IDisposable
         };
         _icon.MouseClick += (_, e) =>
         {
-            if (e.Button == MouseButtons.Left) ShowRequested?.Invoke();
+            if (e.Button == MouseButtons.Left) IconClicked?.Invoke();
+        };
+        // Le premier clic d'un double-clic a déjà levé MouseClick ; le second, non.
+        _icon.MouseDoubleClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) AirPodsPopupRequested?.Invoke();
         };
         ApplyLanguage();
         SetConnected(false);
@@ -62,6 +79,16 @@ internal sealed class TrayIcon : IDisposable
         _stereo.Text = Loc.T("Stereo", "Stéréo");
         _right.Text = Loc.T("Right", "Droite");
         _quit.Text = Loc.T("Quit", "Quitter");
+    }
+
+    /// <summary>
+    /// Texte de l'entrée AirPods (null = masquée) et si elle est cliquable.
+    /// </summary>
+    public void SetAirPods(string? text, bool enabled)
+    {
+        _airPods.Visible = _airPodsSeparator.Visible = text != null;
+        _airPods.Text = text ?? "";
+        _airPods.Enabled = enabled;
     }
 
     private void Choose(float l, float r)

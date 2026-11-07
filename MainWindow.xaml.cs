@@ -51,6 +51,8 @@ public partial class MainWindow : Window
     private readonly NetworkReceiver _net = new();
     private readonly NetworkSender _sender = new();
     private readonly TrayIcon _tray = new();
+    private readonly AirPodsGate _airPods;
+    private readonly AirPodsPopup _airPodsPopup;
     private DeviceWatcher? _watcher;
     private DispatcherTimer? _retryTimer;
     private DispatcherTimer? _pollTimer;
@@ -87,7 +89,32 @@ public partial class MainWindow : Window
         // registre et détourneraient encore du son. On nettoie au démarrage.
         PurgeStaleCablePins();
 
+        // Tactile : en butée de défilement, WPF fait « rebondir » toute la
+        // fenêtre — on garde le panneau immobile.
+        ManipulationBoundaryFeedback += (_, e) => e.Handled = true;
+        // Un geste qui commence sur un curseur (volume, balance…) le pilote :
+        // pas de défilement, le toucher redevient un clic-glisser.
+        PageScroll.ManipulationStarting += (_, e) =>
+        {
+            for (var d = e.OriginalSource as DependencyObject; d != null && d != PageScroll;
+                 d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            {
+                if (d is System.Windows.Controls.Slider or System.Windows.Controls.Primitives.ScrollBar)
+                {
+                    e.Cancel();
+                    return;
+                }
+            }
+        };
+
         _tray.ShowRequested += () => Dispatcher.Invoke(ToggleFlyout);
+        _tray.IconClicked += () => Dispatcher.Invoke(OnTrayIconClick);
+        _tray.AirPodsPopupRequested += () => Dispatcher.Invoke(OnTrayIconDoubleClick);
+        _trayClickDelay.Tick += (_, _) =>
+        {
+            _trayClickDelay.Stop();
+            ShowFlyout();
+        };
         _tray.QuitRequested += () => Dispatcher.Invoke(Quit);
         _tray.BalanceRequested += (l, r) => Dispatcher.Invoke(() => SetBalanceFromTray(l, r));
 
@@ -134,6 +161,22 @@ public partial class MainWindow : Window
         StartWatcher();
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
+        // AirPods (ex-PodGate) : Windows ne s'y connecte plus seul, on propose
+        // la connexion quand ils sont détectés. Opt-in (Prefs.AirPodsEnabled).
+        _airPods = new AirPodsGate(Dispatcher);
+        _airPodsPopup = new AirPodsPopup { Anchor = this };
+        _airPodsPopup.ConnectClicked += () => _ = _airPods.ConnectAsync();
+        _airPodsPopup.LiveActionClicked += ToggleAirPodsConnection;
+        _airPodsPopup.Dismissed += () => _airPods.DismissPrompt();
+        _tray.AirPodsRequested += () => Dispatcher.Invoke(ToggleAirPodsConnection);
+        AirPodsBlock.ActionClicked += ToggleAirPodsConnection;
+        _airPods.NotifyRequested += (title, text) => _tray.Notify(title, text);
+        _airPods.Changed += OnAirPodsChanged;
+        _airPods.PromptRequested += OnAirPodsPrompt;
+        _airPods.PromptWithdrawn += OnAirPodsPromptWithdrawn;
+        _airPods.MessageRequested += OnAirPodsMessage;
+        _airPods.Start();
+
         // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
         // passe sa vie cachée, pas de réveil 20 fois par seconde pour rien.
         // L'aurore est clippée aux coins arrondis de la carte (rayon du style
@@ -176,25 +219,20 @@ public partial class MainWindow : Window
 
         Loaded += (_, _) =>
         {
-            ReserveSettingsHeight();
+            ShowInstalledVersion();
             AnimateIn();
         };
     }
 
     /// <summary>
     /// Le panneau garde sur toutes les pages la hauteur de la page principale
-    /// (voir NavigateTo). On donne donc à celle-ci au moins la hauteur des
-    /// Réglages repliés, mesurés hors écran : sinon ils défilent pour
-    /// quelques pixels dès que la page principale est courte.
+    /// (voir NavigateTo) : c'est elle qui fixe la taille, les autres pages
+    /// défilent si elles sont plus longues — pas de vide sous la page principale.
     /// </summary>
-    private void ReserveSettingsHeight()
+    private void ShowInstalledVersion()
     {
         UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
                                   $"Version installée : {Updater.CurrentVersion}");
-        SettingsPanel.Visibility = Visibility.Visible;
-        SettingsPanel.Measure(new System.Windows.Size(PageHost.ActualWidth, double.PositiveInfinity));
-        MainPanel.MinHeight = Math.Ceiling(SettingsPanel.DesiredSize.Height);
-        SettingsPanel.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
@@ -314,6 +352,11 @@ public partial class MainWindow : Window
             "Compresse le flux émis à 256 kbit/s (transparent) — 6x moins de bande passante, utile en Wi-Fi chargé.");
         AdvancedNavLabel.Text = Loc.T("Advanced", "Avancé");
         DiagNavLabel.Text = Loc.T("Diagnostics", "Diagnostic");
+        AirPodsEnableLabel.Text = Loc.T("Manage AirPods connection", "Gérer la connexion des AirPods");
+        AirPodsDeviceLabel.Text = Loc.T("Device", "Appareil");
+        AirPodsPromptLabel.Text = Loc.T("Offer to connect when detected", "Proposer la connexion si détectés");
+        AirPodsPreviewLabel.Text = Loc.T("Popup preview", "Aperçu de la popup");
+        AirPodsPreviewButton.Content = Loc.T("Show", "Afficher");
         DiagStreamHeader.Text = Loc.T("STREAM", "FLUX");
         DiagLogHeader.Text = Loc.T("LOG", "JOURNAL");
         DiagLatencyLabel.Text = Loc.T("Latency", "Latence");
@@ -418,6 +461,7 @@ public partial class MainWindow : Window
             _syncingLanguage = false;
             UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
                                       $"Version installée : {Updater.CurrentVersion}");
+            SyncAirPodsSettings(repopulateDevices: true);
         }
         else if (target == AppPage.Diag)
         {
@@ -1372,6 +1416,35 @@ public partial class MainWindow : Window
         Top = area.Bottom - height - 12;
     }
 
+    // Avec la gestion AirPods active, un double-clic sur l'icône ouvre la
+    // popup AirPods : l'ouverture du panneau attend donc le délai de
+    // double-clic, pour ne pas l'afficher puis le retirer aussitôt. La
+    // fermeture, elle, reste immédiate.
+    private readonly DispatcherTimer _trayClickDelay = new();
+
+    private bool AirPodsPopupAvailable => _airPods.IsRunning || _airPods.IsOwnedElsewhere;
+
+    private void OnTrayIconClick()
+    {
+        if (_trayClickDelay.IsEnabled) return; // second clic, le double-clic suit
+        if (IsVisible || !AirPodsPopupAvailable)
+        {
+            ToggleFlyout();
+            return;
+        }
+        // Clic qui vient de fermer le panneau (désactivation) : rien à rouvrir.
+        if ((DateTime.UtcNow - _lastAutoHide).TotalMilliseconds < 350) return;
+
+        _trayClickDelay.Interval = TimeSpan.FromMilliseconds(System.Windows.Forms.SystemInformation.DoubleClickTime);
+        _trayClickDelay.Start();
+    }
+
+    private void OnTrayIconDoubleClick()
+    {
+        _trayClickDelay.Stop();
+        ShowAirPodsPopup();
+    }
+
     private void ToggleFlyout()
     {
         if (IsVisible)
@@ -1453,10 +1526,206 @@ public partial class MainWindow : Window
         else BalanceStereo.IsChecked = true;
     }
 
-    private void Quit()
+    private async void Quit()
     {
+        if (_quitting) return;
         _quitting = true;
+        // Laisse l'audio des AirPods verrouillé avant de partir (rapide, sans UAC).
+        try { await _airPods.ShutdownAsync(); }
+        catch (Exception ex) { Log.Write($"AirPods : fermeture — {ex.Message}"); }
         Close();
+    }
+
+    // ---------- AirPods ----------
+    // Raccordement de AirPodsGate à l'interface : carte de la page principale,
+    // section des Réglages, popup « Connecter », menu de l'icône.
+
+    private void OnAirPodsChanged()
+    {
+        UpdateAirPodsUi();
+        SyncAirPodsSettings(repopulateDevices: false);
+        _airPodsPopup.UpdateBattery(_airPods.Battery);
+    }
+
+    private void OnAirPodsPrompt(AirPodsPrompt prompt) => _airPodsPopup.ShowPrompt(prompt);
+
+    private void OnAirPodsPromptWithdrawn()
+    {
+        if (_airPodsPopup.IsShowingPrompt) _airPodsPopup.HideNow();
+    }
+
+    private void OnAirPodsMessage(AirPodsMessage message)
+    {
+        // Panneau ouvert : la carte affiche déjà l'état, pas de popup en plus
+        // (sauf pour retirer une proposition devenue caduque).
+        if (IsVisible && !_hiding)
+        {
+            if (_airPodsPopup.IsVisible) _airPodsPopup.HideNow();
+            return;
+        }
+        _airPodsPopup.ShowMessage(message);
+    }
+
+    /// <summary>Carte de la page principale et entrée du menu de l'icône.</summary>
+    private void UpdateAirPodsUi()
+    {
+        bool shown = _airPods.IsRunning || _airPods.IsOwnedElsewhere;
+        var visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        AirPodsHeader.Visibility = visibility;
+        AirPodsCard.Visibility = visibility;
+
+        FillAirPodsView(AirPodsBlock);
+        if (_airPodsPopup.IsShowingLive) FillAirPodsView(_airPodsPopup.View);
+
+        bool hasDevice = _airPods.DeviceName != null;
+        bool disconnect = _airPods.PrefersDisconnect;
+        bool actionable = disconnect ? _airPods.CanDisconnect : _airPods.CanConnect;
+        _tray.SetAirPods(
+            _airPods.IsRunning && hasDevice
+                ? (disconnect ? Loc.T("Disconnect AirPods", "Déconnecter les AirPods")
+                              : Loc.T("Connect AirPods", "Connecter les AirPods"))
+                : null,
+            actionable);
+    }
+
+    /// <summary>
+    /// État courant des AirPods dans un bloc (carte de la page principale, ou
+    /// popup ouverte par double-clic sur l'icône) : batteries quand on les
+    /// connaît, sinon une ligne d'état (avec icône pour les états transitoires
+    /// ou finaux).
+    /// </summary>
+    private void FillAirPodsView(AirPodsView view)
+    {
+        bool hasDevice = _airPods.DeviceName != null;
+        bool disconnect = _airPods.PrefersDisconnect;
+        bool actionable = disconnect ? _airPods.CanDisconnect : _airPods.CanConnect;
+
+        var state = _airPods.State;
+        var battery = _airPods.Battery;
+        bool hasBattery = battery is { IsEmpty: false };
+        view.Title = _airPods.DeviceName ?? "AirPods";
+        view.SetAction(
+            _airPods.IsRunning && hasDevice
+                ? (disconnect ? Loc.T("Disconnect", "Déconnecter") : Loc.T("Connect", "Connecter"))
+                : null,
+            actionable);
+        view.SetBattery(battery);
+        if (state == AirPodsState.Busy || (_airPods.AudioAllowed && state != AirPodsState.Connected))
+            view.SetStatus(AirPodsMessageKind.Progress, _airPods.StatusText);
+        else if (state is AirPodsState.Off or AirPodsState.NoDevice)
+            view.SetStatus(AirPodsMessageKind.Info, _airPods.StatusText);
+        else if (state == AirPodsState.Connected && !hasBattery)
+            view.SetStatus(AirPodsMessageKind.Success, _airPods.StatusText);
+        // Verrouillés : état normal au repos, rien à signaler sous le nom.
+        else if (!hasBattery && state != AirPodsState.Locked)
+            view.SetStatus(null, _airPods.StatusText);
+        else
+            view.SetStatus(null, null);
+        view.SetLed(state == AirPodsState.Connected ? AirPodsView.Led.Green : AirPodsView.Led.White);
+    }
+
+    /// <summary>
+    /// Double-clic sur l'icône : popup AirPods avec l'état du moment et le
+    /// bouton Connecter / Déconnecter. Sans gestion AirPods active, rien.
+    /// </summary>
+    private void ShowAirPodsPopup()
+    {
+        if (!AirPodsPopupAvailable) return;
+        if (IsVisible) HideFlyout();
+        _airPodsPopup.ShowLive(FillAirPodsView);
+    }
+
+    /// <summary>Bouton de la carte et entrée du menu : connecte ou déconnecte selon l'état.</summary>
+    private async void ToggleAirPodsConnection()
+    {
+        try
+        {
+            if (_airPods.PrefersDisconnect) await _airPods.DisconnectAsync();
+            else await _airPods.ConnectAsync();
+        }
+        catch (Exception ex) { Log.Write($"AirPods : action impossible — {ex.Message}"); }
+    }
+
+    private bool _syncingAirPods;
+
+    /// <summary>
+    /// Section AIRPODS des Réglages. La liste des appareils n'est relue qu'à
+    /// l'ouverture des Réglages ou à l'activation (pas à chaque changement
+    /// d'état, qui fermerait la liste déroulante sous les doigts).
+    /// </summary>
+    private void SyncAirPodsSettings(bool repopulateDevices)
+    {
+        _syncingAirPods = true;
+        try
+        {
+            AirPodsEnableToggle.IsChecked = _airPods.IsEnabled;
+            AirPodsOptions.Visibility = _airPods.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+            AirPodsPromptToggle.IsChecked = _airPods.PromptOnDetect;
+
+            if (_airPods.IsRunning && (repopulateDevices || AirPodsDeviceCombo.ItemsSource == null))
+                AirPodsDeviceCombo.ItemsSource = _airPods.GetAudioDevices();
+            if (AirPodsDeviceCombo.ItemsSource is IEnumerable<PairedDevice> devices)
+                AirPodsDeviceCombo.SelectedItem = devices.FirstOrDefault(d => d.Address == _airPods.DeviceAddress);
+
+            AirPodsHint.Text =
+                _airPods.IsOwnedElsewhere
+                    ? Loc.T("Another Duckast instance on this PC is already managing the AirPods.",
+                            "Une autre instance de Duckast gère déjà les AirPods sur ce PC.")
+                : _airPods.IsRunning
+                    ? Loc.T("Windows no longer connects to your AirPods on its own: Duckast offers to connect them when it detects them. Turning this off gives them back to Windows.",
+                            "Windows ne se connecte plus seul à tes AirPods : Duckast propose de les connecter quand il les détecte. Désactiver les rend à Windows.")
+                    : Loc.T("Stops Windows from grabbing your AirPods (e.g. while they're on your iPhone). Duckast offers to connect them when they're detected.",
+                            "Empêche Windows d'accaparer tes AirPods (par exemple quand ils sont sur ton iPhone). Duckast propose de les connecter quand ils sont détectés.");
+        }
+        finally
+        {
+            _syncingAirPods = false;
+        }
+    }
+
+    private async void AirPodsEnable_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _syncingAirPods) return;
+        bool on = AirPodsEnableToggle.IsChecked == true;
+        AirPodsEnableRow.IsEnabled = false;
+        try
+        {
+            await _airPods.SetEnabledAsync(on);
+        }
+        catch (Exception ex) { Log.Write($"AirPods : (dés)activation impossible — {ex.Message}"); }
+        finally
+        {
+            AirPodsEnableRow.IsEnabled = true;
+            AirPodsDeviceCombo.ItemsSource = null;
+            SyncAirPodsSettings(repopulateDevices: true);
+            UpdateAirPodsUi();
+        }
+    }
+
+    private async void AirPodsDevice_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || _syncingAirPods) return;
+        if (AirPodsDeviceCombo.SelectedItem is not PairedDevice device) return;
+        try { await _airPods.SelectDeviceAsync(device); }
+        catch (Exception ex) { Log.Write($"AirPods : changement d'appareil impossible — {ex.Message}"); }
+    }
+
+    /// <summary>
+    /// Affiche la popup telle qu'elle apparaît à la détection (données réelles
+    /// si les AirPods sont à portée). « Connecter » y fonctionne pour de vrai ;
+    /// la fermer ne compte pas comme un refus.
+    /// </summary>
+    private void AirPodsPreview_Click(object sender, RoutedEventArgs e)
+    {
+        _airPodsPopup.ShowPrompt(
+            new AirPodsPrompt(_airPods.DeviceName ?? "AirPods Pro", _airPods.Battery, 25_000),
+            preview: true);
+    }
+
+    private void AirPodsPrompt_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded || _syncingAirPods) return;
+        _airPods.PromptOnDetect = AirPodsPromptToggle.IsChecked == true;
     }
 
     // ---------- Bluetooth ----------
@@ -1792,6 +2061,8 @@ public partial class MainWindow : Window
         _retryTimer?.Stop();
         _watcher?.Stop();
         Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        _airPods.Dispose();
+        _airPodsPopup.Destroy();
 
         // Ne pas laisser la session du téléphone avec un canal coupé.
         try { PhoneAudio.SetBalance(1f, 1f); } catch { }

@@ -237,14 +237,14 @@
         </Setter>
     </Style>
 
-    <!-- Bouton pilule discret -->
+    <!-- Bouton discret (coins arrondis comme les segments) -->
     <Style x:Key="TintedButton" TargetType="Button" BasedOn="{StaticResource FilledButton}">
         <Setter Property="Foreground" Value="{StaticResource Label}"/>
         <Setter Property="FontWeight" Value="Medium"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bg" CornerRadius="21" Background="{StaticResource TrackOff}"
+                    <Border x:Name="Bg" CornerRadius="8" Background="{StaticResource TrackOff}"
                             RenderTransformOrigin="0.5,0.5">
                         <Border.RenderTransform>
                             <ScaleTransform x:Name="Press" ScaleX="1" ScaleY="1"/>
@@ -529,6 +529,7 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="0"/>
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="ScrollViewer.PanningMode" Value="VerticalOnly"/>
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="ListBoxItem">
@@ -740,6 +741,8 @@
         <Setter Property="Focusable" Value="False"/>
         <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
         <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+        <!-- Tactile : défilement au doigt (désactivé par défaut en WPF) -->
+        <Setter Property="PanningMode" Value="VerticalOnly"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollViewer">
@@ -821,7 +824,7 @@
                                     <DropShadowEffect BlurRadius="18" ShadowDepth="3"
                                                       Direction="270" Opacity="0.5"/>
                                 </Border.Effect>
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
                                     <ItemsPresenter/>
                                 </ScrollViewer>
                             </Border>

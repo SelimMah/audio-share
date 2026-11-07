@@ -18,6 +18,12 @@ locaux du PC.
 - **Balance gauche/droite et volume du flux reçu uniquement**, via le volume
   par canal de la session audio (`IChannelAudioVolume`) pour le Bluetooth, et
   par traitement direct des échantillons pour le réseau.
+- **Gestion des AirPods** (option, Réglages → AirPods) : Windows ne se
+  connecte plus tout seul aux AirPods (services audio Bluetooth décochés).
+  Duckast les détecte par leurs annonces Bluetooth Low Energy, affiche la
+  batterie et propose « Connecter / Plus tard ». Ils sont reverrouillés
+  après déconnexion, mise en veille ou arrêt. Désactiver l'option rend les
+  AirPods à Windows.
 - **Interface iOS-like** : panneau « flyout » en bas à droite (comme le volume
   Windows), fond acrylique Windows 11, animation d'ouverture, icône de zone de
   notification dessinée à l'exécution (colorée quand la réception est active).

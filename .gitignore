@@ -6,6 +6,7 @@ publish/
 # Exécutables publiés (trop lourds pour git — voir les Releases GitHub)
 Emetteur/
 installer/
+PodGate/dist/
 
 # Divers
 *.log
