@@ -89,25 +89,8 @@
                         </Grid.RowDefinitions>
                         <local:Tile x:Name="AutostartTile" WrapTitle="True" Art="Power" Breathe="False" ContentPadding="14,12"/>
                         <local:Tile x:Name="DarkModeTile" WrapTitle="True" Grid.Column="2" Art="Moon" Breathe="False" ContentPadding="14,12"/>
-                        <local:Tile x:Name="LanguageTile" Grid.Row="2" Art="Language" Clickable="False"
-                                    Breathe="False" ContentPadding="14,12">
-                            <local:Tile.Footer>
-                                <Border CornerRadius="9" Background="{StaticResource SegmentBed}" Height="26">
-                                    <Grid x:Name="LangSegments">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <RadioButton x:Name="LangEnglish" Grid.Column="0" Content="English" FontSize="12"
-                                                     GroupName="Lang" Style="{StaticResource Segment}"
-                                                     Checked="Language_Checked"/>
-                                        <RadioButton x:Name="LangFrench" Grid.Column="1" Content="Français" FontSize="12"
-                                                     GroupName="Lang" Style="{StaticResource Segment}"
-                                                     Checked="Language_Checked"/>
-                                    </Grid>
-                                </Border>
-                            </local:Tile.Footer>
-                        </local:Tile>
+                        <local:Tile x:Name="LanguageTile" Grid.Row="2" Art="Language"
+                                    Breathe="False" ContentPadding="14,12"/>
                         <local:Tile x:Name="UpdateTile" WrapTitle="True" Grid.Row="2" Grid.Column="2" Art="Refresh"
                                     Breathe="False" ContentPadding="14,12"/>
                     </Grid>
@@ -271,7 +254,7 @@
                 <StackPanel x:Name="MainPanel">
 
                     <!-- Sources : 4 tuiles 2 × 2. Plus d'interrupteur : la tuile
-                         s'allume quand elle est active, le ✕ arrête. -->
+                         s'allume quand elle est active ; un toucher la bascule. -->
                     <Grid x:Name="SourceTiles" Tag="cascade">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

@@ -21,7 +21,7 @@ using VerticalAlignment = System.Windows.VerticalAlignment;
 namespace AudioShare;
 
 /// <summary>Teinte d'état d'une tuile : verre au repos, couleur quand il se passe quelque chose.</summary>
-internal enum TileTint { Glass, Green, Blue, Orange, Red }
+internal enum TileTint { Glass, Green, Blue, Orange, Red, Purple, Rose }
 
 /// <summary>Illustration au trait du fond d'une tuile (tracés de design/maquettes).</summary>
 internal enum TileArt { None, Phone, Globe, Monitor, Case, CaseCorner, Power, Moon, Language, Refresh }
@@ -41,6 +41,10 @@ internal static class Palette
     public static readonly Color OrangeText = Color.FromRgb(0xFF, 0xB3, 0x40);
     public static readonly Color Red = Color.FromRgb(0xFF, 0x69, 0x61);
     public static readonly Color RedText = Color.FromRgb(0xFF, 0x8A, 0x84);
+    public static readonly Color Purple = Color.FromRgb(0xBF, 0x5A, 0xF2);
+    public static readonly Color PurpleText = Color.FromRgb(0xD4, 0xA6, 0xFF);
+    public static readonly Color Rose = Color.FromRgb(0xFF, 0x64, 0x82);
+    public static readonly Color RoseText = Color.FromRgb(0xFF, 0x9A, 0xB0);
     public static readonly Color IdleDot = Color.FromArgb(0x66, 0xEB, 0xEB, 0xF5);
     public static readonly Color Secondary = Color.FromArgb(0x99, 0xEB, 0xEB, 0xF5);
 
@@ -54,6 +58,8 @@ internal static class Palette
         TileTint.Blue => Blue,
         TileTint.Orange => Orange,
         TileTint.Red => Red,
+        TileTint.Purple => Purple,
+        TileTint.Rose => Rose,
         _ => Colors.White,
     };
 
@@ -64,6 +70,8 @@ internal static class Palette
         TileTint.Blue => BlueLight,
         TileTint.Orange => Orange,
         TileTint.Red => Red,
+        TileTint.Purple => Purple,
+        TileTint.Rose => Rose,
         _ => IdleDot,
     };
 
@@ -73,6 +81,8 @@ internal static class Palette
         TileTint.Blue => BlueText,
         TileTint.Orange => OrangeText,
         TileTint.Red => RedText,
+        TileTint.Purple => PurpleText,
+        TileTint.Rose => RoseText,
         _ => Secondary,
     };
 
@@ -83,6 +93,8 @@ internal static class Palette
         TileTint.Blue => (0.32, 0.10, 0.55),
         TileTint.Orange => (0.30, 0.06, 0.55),
         TileTint.Red => (0.24, 0.04, 0.50),
+        TileTint.Purple => (0.32, 0.10, 0.55),
+        TileTint.Rose => (0.30, 0.08, 0.55),
         _ => (0, 0, 0),
     };
 
@@ -330,8 +342,8 @@ internal static class TileArtwork
             }
             case TileArt.Monitor:
             {
-                // Écran + pied, ondes qui sortent à droite (bleu même au repos).
-                art.IdleAccent = Palette.BlueLight;
+                // Écran + pied, ondes qui sortent à droite (violet même au repos : couleur de la tuile Envoyer).
+                art.IdleAccent = Palette.Purple;
                 var s = new Canvas { Width = 76, Height = 56 };
                 s.Children.Add(Rect(6, 4, 58, 36, 6, White(0.05), White(0.30), 0.6));
                 s.Children.Add(Line("M31 40 L29 50 L47 50 L45 40", 0.30, 0.6));

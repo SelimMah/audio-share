@@ -81,7 +81,6 @@ public partial class MainWindow : Window
         LogoHost.MouseEnter += (_, _) => WaddleLogo();
 
         AttachSlidingPill(BalanceSegments);
-        AttachSlidingPill(LangSegments);
         // Le contenu déplié pousse le bas de la page : on le suit, pour que
         // ce qui apparaît reste en vue pendant toute l'ouverture.
         AdvancedHost.SizeChanged += (_, _) => { if (_advancedOpen) PageScroll.ScrollToEnd(); };
@@ -236,22 +235,19 @@ public partial class MainWindow : Window
         UpdateUpdateTile();
     }
 
-    /// <summary>Gestes des tuiles : toucher = action principale, ✕ = arrêter.</summary>
+    /// <summary>Gestes des tuiles : toucher = bascule (allume / éteint).</summary>
     private void WireTiles()
     {
         PhoneTile.Click += OnPhoneTileClick;
-        PhoneTile.CloseClick += DisconnectPhone;
         PhoneTile.MouseRightButtonUp += (_, e) => e.Handled = ShowPhoneMenu();
-        NetworkTile.Click += () => _net.ResumeSender();
-        NetworkTile.CloseClick += () => _net.PauseCurrentSender();
+        NetworkTile.Click += ToggleNetworkReceive;
         SendTile.Click += () => SetSending(!_sendWanted);
-        SendTile.CloseClick += () => SetSending(false);
         AirPodsTile.Footer = _airPodsBars;
         AirPodsTile.Click += OnAirPodsTileClick;
-        AirPodsTile.CloseClick += OnAirPodsTileClose;
 
         AutostartTile.Click += ToggleAutostart;
         DarkModeTile.Click += ToggleDarkMode;
+        LanguageTile.Click += ToggleLanguage;
         UpdateTile.Click += CheckUpdate;
         AirPodsSettingsTile.Click += ToggleAirPodsManagement;
 
@@ -364,11 +360,6 @@ public partial class MainWindow : Window
     /// </summary>
     private void ApplyLanguage()
     {
-        _syncingLanguage = true;
-        LangEnglish.IsChecked = !Loc.French;
-        LangFrench.IsChecked = Loc.French;
-        _syncingLanguage = false;
-
         GeneralHeader.Text = Loc.T("GENERAL", "GÉNÉRAL");
         OutputLabel.Text = Loc.T("Received audio output", "Sortie du son reçu");
         OutputRow.ToolTip = Loc.T(
@@ -424,12 +415,13 @@ public partial class MainWindow : Window
         _tray.ApplyLanguage();
     }
 
-    private bool _syncingLanguage;
+    private void ToggleLanguage() => Loc.SetFrench(!Loc.French);
 
-    private void Language_Checked(object sender, RoutedEventArgs e)
+    /// <summary>Toucher la tuile réseau : pause si elle reçoit, reprise sinon.</summary>
+    private void ToggleNetworkReceive()
     {
-        if (!IsLoaded || _syncingLanguage) return;
-        Loc.SetFrench(LangFrench.IsChecked == true);
+        if (_net.IsReceiving) _net.PauseCurrentSender();
+        else _net.ResumeSender();
     }
 
     private UIElement PanelFor(AppPage page) => page switch
@@ -485,10 +477,6 @@ public partial class MainWindow : Window
         {
             // Les Réglages s'ouvrent toujours repliés.
             if (_page == AppPage.Main) SetAdvancedOpen(false, animate: false);
-            _syncingLanguage = true;
-            LangEnglish.IsChecked = !Loc.French;
-            LangFrench.IsChecked = Loc.French;
-            _syncingLanguage = false;
             UpdateSettingsTiles();
             SyncAirPodsSettings(repopulateDevices: true);
         }
@@ -792,6 +780,7 @@ public partial class MainWindow : Window
         DarkModeTile.Title = Loc.T("Dark mode", "Mode sombre");
         DarkModeTile.SetState(dark ? TileTint.Green : TileTint.Glass, dark ? on : off);
         LanguageTile.Title = Loc.T("Language", "Langue");
+        LanguageTile.SetState(TileTint.Glass, Loc.French ? "Français" : "English");
         UpdateUpdateTile();
     }
 
@@ -1060,15 +1049,15 @@ public partial class MainWindow : Window
     // ---------- Session du téléphone ----------
 
     /// <summary>
-    /// Tuile « Réseau local » : en écoute (verre), reçoit (vert, ✕ = mettre
+    /// Tuile « Réseau local » : en écoute (verre), reçoit (bleu, toucher = mettre
     /// l'émetteur en pause), en pause (un toucher reprend).
     /// </summary>
     private void UpdateNetworkUi()
     {
         if (_net.IsReceiving)
         {
-            NetworkTile.SetState(TileTint.Green, Loc.T("Receiving", "Reçoit"),
-                Loc.T($"from {_net.SenderName}", $"depuis {_net.SenderName}"), close: true);
+            NetworkTile.SetState(TileTint.Blue, Loc.T("Receiving", "Reçoit"),
+                Loc.T($"from {_net.SenderName}", $"depuis {_net.SenderName}"));
             // Latence du tampon en infobulle : la santé du lien sans faire
             // clignoter la tuile chaque seconde.
             NetworkTile.ToolTip = _net.LatencyMs is int ms
@@ -1088,7 +1077,7 @@ public partial class MainWindow : Window
                 "Un autre PC avec Duckast peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.");
         }
         NetworkTile.Title = Loc.T("Local network", "Réseau local");
-        NetworkTile.Clickable = !_net.IsReceiving && _net.PausedSender != null;
+        NetworkTile.Clickable = _net.IsReceiving || _net.PausedSender != null;
         UpdateTrayIcon();
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
@@ -1126,7 +1115,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Tuile « Envoyer » : éteinte (verre), sinon bleue — recherche,
-    /// connexion puis émission ; le ✕ arrête. La section du volume devient
+    /// connexion puis émission ; toucher arrête. La section du volume devient
     /// « SON ÉMIS » pendant l'émission.
     /// </summary>
     private void UpdateSendUi()
@@ -1147,17 +1136,17 @@ public partial class MainWindow : Window
             switch (_sender.Phase)
             {
                 case SendPhase.Streaming:
-                    SendTile.SetState(TileTint.Blue, Loc.T("Streaming", "Émission"), peer, close: true);
+                    SendTile.SetState(TileTint.Purple, Loc.T("Streaming", "Émission"), peer);
                     break;
                 case SendPhase.Connecting:
-                    SendTile.SetState(TileTint.Blue, Loc.T("Connecting…", "Connexion…"), peer, close: true);
+                    SendTile.SetState(TileTint.Purple, Loc.T("Connecting…", "Connexion…"), peer);
                     break;
                 case SendPhase.Retrying:
-                    SendTile.SetState(TileTint.Blue, Loc.T("Retrying…", "Nouvel essai…"), toTarget, close: true);
+                    SendTile.SetState(TileTint.Purple, Loc.T("Retrying…", "Nouvel essai…"), toTarget);
                     break;
                 default:
-                    SendTile.SetState(TileTint.Blue, Loc.T("Searching…", "Recherche…"),
-                        toTarget ?? Loc.T("for a receiver", "d'un récepteur"), close: true);
+                    SendTile.SetState(TileTint.Purple, Loc.T("Searching…", "Recherche…"),
+                        toTarget ?? Loc.T("for a receiver", "d'un récepteur"));
                     break;
             }
         }
@@ -1754,7 +1743,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Tuile AirPods de la page principale (et entrée du menu de l'icône) :
     /// verre au repos (« À proximité » + niveaux), orange pendant la
-    /// connexion, verte une fois connectés ; le ✕ annule ou déconnecte.
+    /// connexion, rose une fois connectés ; toucher annule ou déconnecte.
     /// </summary>
     private void UpdateAirPodsUi()
     {
@@ -1775,11 +1764,11 @@ public partial class MainWindow : Window
             AirPodsTile.SetState(TileTint.Glass, Loc.T("None paired", "Aucun appairé"),
                 Loc.T("Pair them in Windows", "Appaire-les dans Windows"));
         else if (state == AirPodsState.Connected)
-            AirPodsTile.SetState(TileTint.Green, Loc.T("Connected", "Connectés"),
-                hasBattery ? null : Loc.T("Audio on AirPods", "Son sur les AirPods"), close: _airPods.CanDisconnect);
+            AirPodsTile.SetState(TileTint.Rose, Loc.T("Connected", "Connectés"),
+                hasBattery ? null : Loc.T("Audio on AirPods", "Son sur les AirPods"));
         else if (_airPods.IsConnecting)
             AirPodsTile.SetState(TileTint.Orange, Loc.T("Connecting…", "Connexion…"),
-                hasBattery ? null : Loc.T("Waiting for Windows", "Windows se connecte"), close: !_airPods.IsBusy);
+                hasBattery ? null : Loc.T("Waiting for Windows", "Windows se connecte"));
         else if (_airPods.IsBusy)
             AirPodsTile.SetState(TileTint.Glass, Loc.T("Disconnecting…", "Déconnexion…"),
                 hasBattery ? null : Loc.T("Locking audio", "Verrouillage"));
@@ -1793,7 +1782,8 @@ public partial class MainWindow : Window
         _airPodsBars.Visibility = hasBattery ? Visibility.Visible : Visibility.Collapsed;
         _airPodsBars.SetOnTint(AirPodsTile.Tint != TileTint.Glass, IsVisible);
         if (hasBattery) _airPodsBars.SetLevels(battery, IsVisible);
-        AirPodsTile.Clickable = _airPods.CanConnect && state != AirPodsState.Connected && !_airPods.IsConnecting;
+        AirPodsTile.Clickable = state == AirPodsState.Connected ? _airPods.CanDisconnect
+            : _airPods.IsConnecting ? !_airPods.IsBusy : _airPods.CanConnect;
         AirPodsTile.ToolTip = _airPods.StatusText;
 
         bool hasDevice = _airPods.DeviceName != null;
@@ -1807,15 +1797,18 @@ public partial class MainWindow : Window
             actionable);
     }
 
+    /// <summary>Toucher la tuile AirPods la bascule : connecte, annule ou déconnecte.</summary>
     private void OnAirPodsTileClick()
     {
-        if (_airPods.CanConnect && _airPods.State != AirPodsState.Connected) _ = _airPods.ConnectAsync();
-    }
-
-    private void OnAirPodsTileClose()
-    {
-        if (_airPods.State != AirPodsState.Connected && _airPods.IsConnecting) _ = _airPods.CancelConnectAsync();
-        else _ = _airPods.DisconnectAsync();
+        if (_airPods.State == AirPodsState.Connected)
+        {
+            if (_airPods.CanDisconnect) _ = _airPods.DisconnectAsync();
+        }
+        else if (_airPods.IsConnecting)
+        {
+            if (!_airPods.IsBusy) _ = _airPods.CancelConnectAsync();
+        }
+        else if (_airPods.CanConnect) _ = _airPods.ConnectAsync();
     }
 
     /// <summary>
@@ -1997,7 +1990,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Tuile du téléphone : disponible (verre, toucher pour recevoir), en
-    /// attente (orange), connecté (vert) ; le ✕ arrête la réception.
+    /// attente (orange), connecté ; toucher arrête la réception.
     /// </summary>
     private void UpdatePhoneTile()
     {
@@ -2014,14 +2007,14 @@ public partial class MainWindow : Window
         }
         if (dev.Id == _activeId && PhoneOpened)
             PhoneTile.SetState(TileTint.Green, Loc.T("Connected", "Connecté"),
-                Loc.T("Audio on this PC", "Son sur ce PC"), close: true);
+                Loc.T("Audio on this PC", "Son sur ce PC"));
         else if (dev.Id == _activeId)
             PhoneTile.SetState(TileTint.Orange, Loc.T("Waiting…", "En attente…"),
-                Loc.T("Pick this PC on it", "Choisis ce PC dessus"), close: true);
+                Loc.T("Pick this PC on it", "Choisis ce PC dessus"));
         else
             PhoneTile.SetState(TileTint.Glass, Loc.T("Available", "Disponible"),
                 Loc.T("Tap to receive", "Toucher pour recevoir"));
-        PhoneTile.Clickable = dev.Id != _activeId;
+        PhoneTile.Clickable = true;
         PhoneTile.ToolTip = _devices.Count > 1
             ? Loc.T("Right-click to choose another phone.", "Clic droit pour choisir un autre téléphone.")
             : null;
@@ -2037,7 +2030,7 @@ public partial class MainWindow : Window
             catch (Exception ex) { Log.Write($"Bluetooth : réglages introuvables — {ex.Message}"); }
             return;
         }
-        if (dev.Id == _activeId) return; // déjà choisi : le ✕ arrête
+        if (dev.Id == _activeId) { DisconnectPhone(); return; } // déjà choisi : toucher = arrêter
         await ConnectPhoneAsync(dev);
     }
 
@@ -2205,7 +2198,7 @@ public partial class MainWindow : Window
         });
     }
 
-    /// <summary>✕ de la tuile du téléphone : arrête la réception.</summary>
+    /// <summary>Toucher la tuile du téléphone connecté : arrête la réception.</summary>
     private void DisconnectPhone()
     {
         if (_activeId != null) CloseConnection(_activeId);
