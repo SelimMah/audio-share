@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:local="clr-namespace:AudioShare"
         Title="Duckast"
-        Width="400" SizeToContent="Height"
+        Width="360" SizeToContent="Height"
         WindowStyle="None" AllowsTransparency="False"
         Background="Transparent"
         TextOptions.TextFormattingMode="Ideal"
@@ -12,29 +12,27 @@
         ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
         ShowActivated="True">
 
+    <!-- Charte : design/README.md et design/maquettes/*.html (360 de large,
+         marges 14, tuiles 161 × 112, rayon 18). -->
+
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="0" GlassFrameThickness="-1"
                             ResizeBorderThickness="0" CornerRadius="0"/>
     </shell:WindowChrome.WindowChrome>
 
     <Grid x:Name="Root">
-        <Grid.Resources>
-            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        </Grid.Resources>
         <Grid.RenderTransform>
             <TranslateTransform x:Name="RootSlide"/>
         </Grid.RenderTransform>
-            <StackPanel Margin="20,18,20,20">
+            <StackPanel Margin="14,14,14,16">
 
-                <Grid>
-                    <StackPanel Orientation="Horizontal" Margin="0">
-                        <!-- Logo : présent sur la page principale seulement, il se
-                             replie (largeur animée en code) quand on entre dans les
-                             Réglages et le titre glisse à sa place. Les tracés
-                             viennent de DuckLogo, posés en code. -->
-                        <Border x:Name="LogoHost" Width="44" Background="#00FFFFFF" ClipToBounds="True"
-                                VerticalAlignment="Center">
-                            <Viewbox x:Name="LogoBox" RenderTransformOrigin="0.5,0.5" Width="30" Height="30" Margin="4,3" HorizontalAlignment="Left">
+                <!-- En-tête : logo + titre de la page, engrenage (allumé dans les Réglages) -->
+                <Grid Height="40" Margin="0,0,0,8">
+                    <StackPanel Orientation="Horizontal">
+                        <!-- Logo : tracés de DuckLogo posés en code ; il se dandine au survol. -->
+                        <Border x:Name="LogoHost" Background="#00FFFFFF" VerticalAlignment="Center"
+                                Margin="0,0,10,0">
+                            <Viewbox x:Name="LogoBox" RenderTransformOrigin="0.5,0.5" Width="26" Height="26">
                                 <Canvas Width="512" Height="512">
                                     <Path x:Name="LogoBeak" Fill="#FF7A10"/>
                                     <Path x:Name="LogoWing" Fill="#188C46"
@@ -43,17 +41,16 @@
                                 </Canvas>
                             </Viewbox>
                         </Border>
-                        <TextBlock x:Name="TitleText" Text="Duckast"
+                        <TextBlock x:Name="TitleText" Text="Duckast" VerticalAlignment="Center"
                                    FontFamily="{StaticResource Display}"
-                                   FontSize="26" FontWeight="Bold" Foreground="{StaticResource Label}">
+                                   FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Label}">
                             <TextBlock.RenderTransform>
                                 <TranslateTransform x:Name="TitleSlide"/>
                             </TextBlock.RenderTransform>
                         </TextBlock>
                     </StackPanel>
-                    <Button x:Name="SettingsButton" Content="&#xE713;" Width="32" Height="32"
-                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15"
-                            Style="{StaticResource ChromeButton}"
+                    <Button x:Name="SettingsButton" Content="&#xE713;"
+                            Style="{StaticResource HeaderButton}"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             RenderTransformOrigin="0.5,0.5"
                             Click="Settings_Click" ToolTip="Réglages">
@@ -64,364 +61,291 @@
                 </Grid>
 
                 <!-- Zone défilante : hors de la page principale sa hauteur est
-                     figée (en code) sur celle de la page principale — le
-                     panneau ne change jamais de taille, ce qui dépasse défile.
-                     Marges négatives : elle va jusqu'aux bords de la fenêtre,
-                     pour que les pages qui glissent ne soient pas rognées
-                     au ras des cartes. -->
+                     figée (en code) sur celle de la page principale — toutes
+                     les pages ont la taille de l'accueil, ce qui dépasse
+                     défile. Marges négatives : elle va jusqu'aux bords de la
+                     fenêtre, pour que les pages qui glissent ne soient pas
+                     rognées au ras des tuiles. -->
                 <ScrollViewer x:Name="PageScroll" Style="{StaticResource OverlayScroll}"
-                              Margin="-20,0,-20,-20">
-                <!-- Les pages partagent la même cellule : pendant une transition,
-                     celle qui part et celle qui arrive se superposent en fondu. -->
-                <Grid x:Name="PageHost" Margin="20,0,20,20">
+                              Margin="-14,0,-14,-16">
+                <Grid x:Name="PageHost" Margin="14,0,14,16">
 
-                <!-- Page Réglages : remplace la page principale -->
+                <!-- ============================ Réglages ============================ -->
                 <StackPanel x:Name="SettingsPanel" Visibility="Collapsed">
-                    <TextBlock x:Name="GeneralHeader" Text="GENERAL" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource Card}" Padding="16,4">
-                        <StackPanel>
-                            <Grid Height="44" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
-                                <TextBlock x:Name="AutostartLabel" Text="Launch at Windows startup"
-                                           Style="{StaticResource RowLabel}"/>
-                                <CheckBox x:Name="AutostartToggle" Style="{StaticResource Switch}"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          Checked="Autostart_Changed" Unchecked="Autostart_Changed"/>
-                            </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}"/>
-                            <Grid Height="44" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
-                                <TextBlock x:Name="DarkModeLabel" Text="Dark mode"
-                                           Style="{StaticResource RowLabel}"/>
-                                <CheckBox x:Name="DarkModeToggle" Style="{StaticResource Switch}"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          Checked="DarkMode_Changed" Unchecked="DarkMode_Changed"/>
-                            </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}"/>
-                            <Grid Height="44">
-                                <TextBlock x:Name="LanguageLabel" Text="Language"
-                                           Style="{StaticResource RowLabel}"/>
-                                <Border CornerRadius="9" Background="{StaticResource SegmentBed}"
-                                        Width="170" Height="30"
-                                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock x:Name="GeneralHeader" Text="GENERAL" Style="{StaticResource SectionHeader}"
+                               Margin="6,2,6,6"/>
+
+                    <!-- Tuiles 161 × 88 : touchées, elles s'allument comme celles de l'accueil -->
+                    <Grid x:Name="GeneralTiles" Tag="cascade">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="88"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="88"/>
+                        </Grid.RowDefinitions>
+                        <local:Tile x:Name="AutostartTile" WrapTitle="True" Art="Power" Breathe="False" ContentPadding="14,12"/>
+                        <local:Tile x:Name="DarkModeTile" WrapTitle="True" Grid.Column="2" Art="Moon" Breathe="False" ContentPadding="14,12"/>
+                        <local:Tile x:Name="LanguageTile" Grid.Row="2" Art="Language" Clickable="False"
+                                    Breathe="False" ContentPadding="14,12">
+                            <local:Tile.Footer>
+                                <Border CornerRadius="9" Background="{StaticResource SegmentBed}" Height="26">
                                     <Grid x:Name="LangSegments">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <RadioButton x:Name="LangEnglish" Grid.Column="0" Content="English"
+                                        <RadioButton x:Name="LangEnglish" Grid.Column="0" Content="English" FontSize="12"
                                                      GroupName="Lang" Style="{StaticResource Segment}"
                                                      Checked="Language_Checked"/>
-                                        <RadioButton x:Name="LangFrench" Grid.Column="1" Content="Français"
+                                        <RadioButton x:Name="LangFrench" Grid.Column="1" Content="Français" FontSize="12"
                                                      GroupName="Lang" Style="{StaticResource Segment}"
                                                      Checked="Language_Checked"/>
                                     </Grid>
                                 </Border>
-                            </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}"/>
-                            <Grid Height="44">
-                                <TextBlock x:Name="UpdateLabel" Text="Updates" Style="{StaticResource RowLabel}"/>
-                                <Button x:Name="CheckUpdateButton" Content="Check"
-                                        Width="94" Height="30" FontSize="12.5"
-                                        Style="{StaticResource TintedButton}"
-                                        HorizontalAlignment="Right" VerticalAlignment="Center"
-                                        Click="CheckUpdate_Click"/>
-                            </Grid>
-                            <TextBlock x:Name="UpdateStatus" TextWrapping="Wrap"
-                                       FontFamily="{StaticResource Body}" FontSize="12"
-                                       Foreground="{StaticResource LabelTertiary}" LineHeight="16"
-                                       Margin="0,0,0,10"/>
-                        </StackPanel>
-                    </Border>
+                            </local:Tile.Footer>
+                        </local:Tile>
+                        <local:Tile x:Name="UpdateTile" WrapTitle="True" Grid.Row="2" Grid.Column="2" Art="Refresh"
+                                    Breathe="False" ContentPadding="14,12"/>
+                    </Grid>
 
-                    <!-- AirPods : Windows ne s'y connecte plus seul, Duckast
-                         propose la connexion quand il les détecte. Les options
-                         n'apparaissent qu'une fois la gestion activée. -->
+                    <!-- AirPods : une carte qui s'allume comme une tuile ; toucher son
+                         en-tête active / désactive la gestion. Les options se
+                         déplient dessous quand elle est active. -->
                     <TextBlock x:Name="AirPodsSettingsHeader" Text="AIRPODS" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource Card}" Padding="16,4">
-                        <StackPanel>
-                            <Grid x:Name="AirPodsEnableRow" Height="44" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
-                                <TextBlock x:Name="AirPodsEnableLabel" Text="Manage AirPods connection"
-                                           Style="{StaticResource RowLabel}"/>
-                                <CheckBox x:Name="AirPodsEnableToggle" Style="{StaticResource Switch}"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          Checked="AirPodsEnable_Changed" Unchecked="AirPodsEnable_Changed"/>
-                            </Grid>
-                            <StackPanel x:Name="AirPodsOptions" Visibility="Collapsed">
-                                <Border Height="1" Background="{StaticResource Separator}"/>
-                                <Grid Height="44">
-                                    <TextBlock x:Name="AirPodsDeviceLabel" Text="Device"
-                                               Style="{StaticResource RowLabel}"/>
-                                    <ComboBox x:Name="AirPodsDeviceCombo" Style="{StaticResource PlainCombo}"
-                                              MaxWidth="200" DisplayMemberPath="Name"
-                                              HorizontalAlignment="Right" VerticalAlignment="Center"
-                                              SelectionChanged="AirPodsDevice_Changed"/>
-                                </Grid>
-                                <Border Height="1" Background="{StaticResource Separator}"/>
-                                <Grid Height="44" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
-                                    <TextBlock x:Name="AirPodsPromptLabel" Text="Offer to connect when detected"
-                                               Style="{StaticResource RowLabel}"/>
-                                    <CheckBox x:Name="AirPodsPromptToggle" Style="{StaticResource Switch}"
-                                              HorizontalAlignment="Right" VerticalAlignment="Center"
-                                              Checked="AirPodsPrompt_Changed" Unchecked="AirPodsPrompt_Changed"/>
-                                </Grid>
-                                <Border Height="1" Background="{StaticResource Separator}"/>
-                                <Grid Height="44">
-                                    <TextBlock x:Name="AirPodsPreviewLabel" Text="Popup preview"
-                                               Style="{StaticResource RowLabel}"/>
-                                    <Button x:Name="AirPodsPreviewButton" Content="Show"
-                                            Width="94" Height="30" FontSize="12.5"
-                                            Style="{StaticResource TintedButton}"
-                                            HorizontalAlignment="Right" VerticalAlignment="Center"
-                                            Click="AirPodsPreview_Click"/>
-                                </Grid>
-                            </StackPanel>
-                            <TextBlock x:Name="AirPodsHint" TextWrapping="Wrap"
-                                       FontFamily="{StaticResource Body}" FontSize="12"
-                                       Foreground="{StaticResource LabelTertiary}" LineHeight="16"
-                                       Margin="0,0,0,10"/>
-                        </StackPanel>
-                    </Border>
+                    <local:Tile x:Name="AirPodsSettingsTile" Art="CaseCorner" Breathe="False"
+                                ContentPadding="14,14,14,2">
+                        <local:Tile.Footer>
+                            <Border x:Name="AirPodsOptionsHost" Height="0" Opacity="0" ClipToBounds="True"
+                                    IsHitTestVisible="False">
+                                <StackPanel x:Name="AirPodsOptions" VerticalAlignment="Top" Margin="0,10,0,0">
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Grid Height="40" Cursor="Hand" Background="#00FFFFFF">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="AirPodsDeviceLabel" Text="Device"
+                                                   Style="{StaticResource CardRowLabel}" Margin="0,0,12,0"/>
+                                        <ComboBox x:Name="AirPodsDeviceCombo" Grid.Column="1"
+                                                  Style="{StaticResource PlainCombo}" Foreground="{StaticResource LabelValue}"
+                                                  DisplayMemberPath="Name"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  SelectionChanged="AirPodsDevice_Changed"/>
+                                    </Grid>
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Grid Height="40" Background="#00FFFFFF" Cursor="Hand"
+                                          MouseLeftButtonUp="ToggleRow_Click">
+                                        <TextBlock x:Name="AirPodsPromptLabel" Text="Offer when the case opens"
+                                                   Style="{StaticResource CardRowLabel}" Margin="0,0,90,0"/>
+                                        <CheckBox x:Name="AirPodsPromptToggle" Style="{StaticResource DotToggle}"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  Checked="AirPodsPrompt_Changed" Unchecked="AirPodsPrompt_Changed"/>
+                                    </Grid>
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Grid Height="40">
+                                        <TextBlock x:Name="AirPodsPreviewLabel" Text="Window preview"
+                                                   Style="{StaticResource CardRowLabel}"/>
+                                        <Button x:Name="AirPodsPreviewButton" Style="{StaticResource RoundIconButton}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Click="AirPodsPreview_Click">
+                                            <Path Data="M3 1.5 L10 6 L3 10.5 Z" Fill="White" Width="11" Height="11"
+                                                  Stretch="None" Margin="1,0,0,0"/>
+                                        </Button>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </local:Tile.Footer>
+                    </local:Tile>
+                    <TextBlock x:Name="AirPodsHint" TextWrapping="Wrap"
+                               FontFamily="{StaticResource Body}" FontSize="12"
+                               Foreground="{StaticResource LabelTertiary}" LineHeight="16"
+                               Margin="6,8,6,0"/>
 
-                    <!-- Avancé : les réglages qu'on ne touche presque jamais
-                         (sortie, destination, compression) et l'accès au
-                         diagnostic. La ligne déplie son contenu sur place
-                         (hauteur de AdvancedHost animée en code). -->
-                    <Border Style="{StaticResource Card}" Padding="6,4" Margin="0,14,0,0">
+                    <!-- Avancé : se déplie sur place (hauteur de AdvancedHost animée en code). -->
+                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,12,0,0">
                         <StackPanel>
-                        <Button x:Name="AdvancedNavButton" Style="{StaticResource NavRow}"
-                                Click="AdvancedNav_Click">
-                            <TextBlock x:Name="AdvancedNavLabel" Text="Advanced"
-                                       FontFamily="{StaticResource Body}" FontSize="14"
-                                       Foreground="{StaticResource Label}"/>
-                        </Button>
-                        <Border x:Name="AdvancedHost" Height="0" Opacity="0"
-                                ClipToBounds="True" IsHitTestVisible="False">
-                        <StackPanel x:Name="AdvancedContent" VerticalAlignment="Top">
-                        <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
-                        <Grid x:Name="OutputRow" Height="44" Margin="10,0">
-                            <TextBlock x:Name="OutputLabel" Text="Received audio output"
-                                       Style="{StaticResource RowLabel}"/>
-                            <ComboBox x:Name="OutputCombo" Style="{StaticResource PlainCombo}"
-                                      MaxWidth="180" DisplayMemberPath="Name"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center"
-                                      SelectionChanged="Output_Changed"/>
-                        </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
-                            <Grid x:Name="DestRow" Height="44" Margin="10,0">
-                                <TextBlock x:Name="DestLabel" Text="Send to"
-                                           Style="{StaticResource RowLabel}"/>
-                                <ComboBox x:Name="DestCombo" Style="{StaticResource PlainCombo}"
-                                          MaxWidth="180" DisplayMemberPath="Name"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          SelectionChanged="Dest_Changed"/>
-                            </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
-                            <Grid x:Name="OpusRow" Height="44" Margin="10,0" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
-                                <TextBlock x:Name="OpusLabel" Text="Opus compression (Wi-Fi)"
-                                           Style="{StaticResource RowLabel}"/>
-                                <CheckBox x:Name="OpusToggle" Style="{StaticResource Switch}"
-                                          HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          Checked="Opus_Changed" Unchecked="Opus_Changed"/>
-                            </Grid>
-                            <Border Height="1" Background="{StaticResource Separator}" Margin="10,0"/>
-                        <Button x:Name="DiagNavButton" Style="{StaticResource NavRow}"
-                                Click="DiagNav_Click">
-                            <TextBlock x:Name="DiagNavLabel" Text="Diagnostics"
-                                       FontFamily="{StaticResource Body}" FontSize="14"
-                                       Foreground="{StaticResource Label}"/>
-                        </Button>
-                        </StackPanel>
-                        </Border>
+                            <Button x:Name="AdvancedNavButton" Style="{StaticResource ExpandRow}"
+                                    Click="AdvancedNav_Click">
+                                <Grid>
+                                    <TextBlock x:Name="AdvancedNavLabel" Text="Advanced"
+                                               FontFamily="{StaticResource Body}" FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Label}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="AdvancedSummary" HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" Margin="70,0,0,0"
+                                               TextTrimming="CharacterEllipsis"
+                                               FontFamily="{StaticResource Body}" FontSize="12"
+                                               Foreground="#80EBEBF5"/>
+                                </Grid>
+                            </Button>
+                            <Border x:Name="AdvancedHost" Height="0" Opacity="0"
+                                    ClipToBounds="True" IsHitTestVisible="False">
+                                <StackPanel x:Name="AdvancedContent" VerticalAlignment="Top" Margin="16,0,16,4">
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Grid x:Name="OutputRow" Height="40">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="OutputLabel" Text="Output" Margin="0,0,12,0"
+                                                   Style="{StaticResource CardRowLabel}"/>
+                                        <ComboBox x:Name="OutputCombo" Grid.Column="1" Style="{StaticResource PlainCombo}"
+                                                  Foreground="{StaticResource LabelValue}"
+                                                  DisplayMemberPath="Name"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  SelectionChanged="Output_Changed"/>
+                                    </Grid>
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Grid x:Name="DestRow" Height="40">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="DestLabel" Text="Send to" Margin="0,0,12,0"
+                                                   Style="{StaticResource CardRowLabel}"/>
+                                        <ComboBox x:Name="DestCombo" Grid.Column="1" Style="{StaticResource PlainCombo}"
+                                                  Foreground="{StaticResource LabelValue}"
+                                                  DisplayMemberPath="Name"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  SelectionChanged="Dest_Changed"/>
+                                    </Grid>
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Grid x:Name="OpusRow" Height="40" Background="#00FFFFFF" Cursor="Hand"
+                                          MouseLeftButtonUp="ToggleRow_Click">
+                                        <TextBlock x:Name="OpusLabel" Text="Opus compression (Wi-Fi)"
+                                                   Style="{StaticResource CardRowLabel}" Margin="0,0,90,0"/>
+                                        <CheckBox x:Name="OpusToggle" Style="{StaticResource DotToggle}"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  Checked="Opus_Changed" Unchecked="Opus_Changed"/>
+                                    </Grid>
+                                    <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <Button x:Name="DiagNavButton" Style="{StaticResource NavRow}" Height="40"
+                                            Margin="-10,0" Click="DiagNav_Click">
+                                        <TextBlock x:Name="DiagNavLabel" Text="Diagnostics"
+                                                   FontFamily="{StaticResource Body}" FontSize="13.5"
+                                                   Foreground="{StaticResource Label}"/>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
                 </StackPanel>
 
-                <!-- Page Diagnostic : accessible depuis les Réglages -->
+                <!-- ============================ Diagnostic ============================ -->
                 <StackPanel x:Name="DiagPanel" Visibility="Collapsed">
-                    <TextBlock x:Name="DiagStreamHeader" Text="STREAM" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource Card}" Padding="16,4">
+                    <TextBlock x:Name="DiagStreamHeader" Text="STREAM" Style="{StaticResource SectionHeader}"
+                               Margin="6,2,6,6"/>
+                    <Border Style="{StaticResource Card}" Padding="16,2">
                         <StackPanel>
                             <Grid Height="40">
                                 <TextBlock x:Name="DiagLatencyLabel" Text="Latency"
-                                           Style="{StaticResource RowLabel}"/>
+                                           Style="{StaticResource CardRowLabel}"/>
                                 <TextBlock x:Name="DiagLatency" Text="—"
                                            FontFamily="{StaticResource Body}" FontSize="13"
-                                           Foreground="{StaticResource LabelSecondary}"
+                                           Foreground="{StaticResource LabelValue}"
                                            HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                             <Border Height="1" Background="{StaticResource Separator}"/>
                             <Grid Height="40">
                                 <TextBlock x:Name="DiagRateLabel" Text="Bitrate"
-                                           Style="{StaticResource RowLabel}"/>
+                                           Style="{StaticResource CardRowLabel}"/>
                                 <TextBlock x:Name="DiagRate" Text="—"
                                            FontFamily="{StaticResource Body}" FontSize="13"
-                                           Foreground="{StaticResource LabelSecondary}"
+                                           Foreground="{StaticResource LabelValue}"
                                            HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </StackPanel>
                     </Border>
                     <TextBlock x:Name="DiagLogHeader" Text="LOG" Style="{StaticResource SectionHeader}"/>
-                    <Border Style="{StaticResource Card}" Padding="16,10">
+                    <Border Style="{StaticResource Card}" Padding="16,12">
                         <TextBlock x:Name="DiagLog" TextWrapping="Wrap"
                                    FontFamily="Cascadia Mono, Consolas" FontSize="10"
-                                   Foreground="{StaticResource LabelTertiary}" LineHeight="14"/>
+                                   Foreground="{StaticResource LabelSecondary}" LineHeight="14"/>
                     </Border>
                 </StackPanel>
 
-                <!-- Page principale -->
+                <!-- ========================= Page principale ========================= -->
                 <StackPanel x:Name="MainPanel">
 
-                <!-- Sources : téléphones Bluetooth et réseau local, une seule carte -->
-                <TextBlock Text="SOURCES" Style="{StaticResource SectionHeader}"/>
-                <Border Style="{StaticResource Card}" Padding="6">
-                    <StackPanel>
-                        <ListBox x:Name="DeviceList" Style="{StaticResource PlainList}"
-                                 MaxHeight="150" SelectionChanged="DeviceList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="26"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border Grid.Column="0" Width="13" Height="20" CornerRadius="3"
-                                                BorderThickness="1.4" Margin="0,0,0,0"
-                                                HorizontalAlignment="Left"
-                                                BorderBrush="{StaticResource LabelSecondary}"
-                                                VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                                   FontFamily="{StaticResource Body}" FontSize="14"
-                                                   Foreground="{StaticResource Label}"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding Status}"
-                                                   FontFamily="{StaticResource Body}" FontSize="12"
-                                                   Foreground="{StaticResource Green}"
-                                                   VerticalAlignment="Center"/>
-                                        <Button Grid.Column="3" Content="✕" Width="26" Height="26"
-                                                Margin="10,0,0,0" FontSize="12"
-                                                Style="{StaticResource ChromeButton}"
-                                                Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"
-                                                Click="Disconnect_Click" ToolTip="Arrêter la réception"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <TextBlock x:Name="EmptyHint" Margin="10,9,10,9" TextWrapping="Wrap"
-                                   FontFamily="{StaticResource Body}" FontSize="12.5"
-                                   Foreground="{StaticResource LabelSecondary}"
-                                   Visibility="Collapsed"
-                                   Text="No paired phone — pair one in Windows Bluetooth settings."/>
-
-                        <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
-
-                        <!-- Réception réseau : toujours active, état à droite -->
-                        <Grid x:Name="NetworkRow" Margin="10,8"
-                              ToolTip="Another PC running Duckast can stream its audio here: turn on “Send” over there, the connection is automatic.">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="26"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="&#xE701;" FontSize="15"
-                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                       Foreground="{StaticResource LabelSecondary}"
-                                       HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="1" x:Name="NetworkLabel" Text="Local network"
-                                       FontFamily="{StaticResource Body}" FontSize="14"
-                                       Foreground="{StaticResource Label}" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" x:Name="NetworkStatus"
-                                       FontFamily="{StaticResource Body}" FontSize="12"
-                                       Foreground="{StaticResource LabelTertiary}"
-                                       VerticalAlignment="Center" Text="listening"/>
-                        </Grid>
-
-                        <Border Height="1" Background="{StaticResource Separator}" Margin="10,2"/>
-
-                        <!-- Émission vers un autre PC -->
-                        <Grid Margin="10,5" Height="34" Background="Transparent" MouseLeftButtonUp="ToggleRow_Click">
-                            <TextBlock x:Name="SendLabel" Text="Send this PC's audio" Style="{StaticResource RowLabel}"/>
-                            <CheckBox x:Name="SendToggle" Style="{StaticResource Switch}"
-                                      HorizontalAlignment="Right" VerticalAlignment="Center"
-                                      Checked="SendToggle_Changed" Unchecked="SendToggle_Changed"/>
-                        </Grid>
-
-                        <TextBlock x:Name="SendStatus" TextWrapping="Wrap" Visibility="Collapsed"
-                                   FontFamily="{StaticResource Body}" FontSize="12"
-                                   Foreground="{StaticResource LabelTertiary}" LineHeight="16"
-                                   Margin="10,0,10,8"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- AirPods (voir AirPodsGate) : visible seulement quand la
-                     gestion est activée dans les Réglages. -->
-                <TextBlock x:Name="AirPodsHeader" Text="AIRPODS" Style="{StaticResource SectionHeader}"
-                           Visibility="Collapsed"/>
-                <Border x:Name="AirPodsCard" Style="{StaticResource Card}" Padding="12"
-                        Visibility="Collapsed">
-                    <!-- Même bloc que la popup AirPods -->
-                    <local:AirPodsView x:Name="AirPodsBlock"/>
-                </Border>
-
-                <!-- Volume et balance du son reçu (Bluetooth ou réseau) ; la
-                     section devient « SENT AUDIO » pendant l'émission et le
-                     curseur pilote alors le volume émis. -->
-                <TextBlock x:Name="VolumeHeader" Text="RECEIVED AUDIO" Style="{StaticResource SectionHeader}"/>
-                <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,10">
-                    <Grid>
-                        <!-- Vumètre : aurore diffuse sur tout le fond de la carte —
-                             des nappes de couleur floutées qui respirent (opacité)
-                             et dérivent en 2D avec le niveau du son. Invisible au
-                             repos ; le clip arrondi (posé en code) suit la carte. -->
-                        <Border x:Name="VuClip">
-                            <!-- Canvas : taille nulle en layout, les nappes peuvent
-                                 déborder sans agrandir la carte — le clip coupe.
-                                 Les nappes elles-mêmes sont générées en code
-                                 (formes, vitesses et couleurs aléatoires). -->
-                            <!-- Pas de BlurEffect : un Effect WPF casse la
-                                 composition de l'acrylique DWM (et coûte cher).
-                                 La diffusion vient des dégradés radiaux
-                                 eux-mêmes, qui fondent en transparence. -->
-                            <Canvas x:Name="VuGlow" IsHitTestVisible="False" Opacity="0"/>
-                        </Border>
-                        <Grid Margin="12,10,16,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button x:Name="MuteButton" Grid.Column="0" Content="&#xE995;"
-                                    Width="32" Height="32" FontSize="15"
-                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                    Style="{StaticResource ChromeButton}"
-                                    VerticalAlignment="Center" Margin="0,0,10,0"
-                                    Click="Mute_Click"/>
-                            <Slider x:Name="VolumeSlider" Grid.Column="1"
-                                    Style="{StaticResource IosSlider}"
-                                    IsMoveToPointEnabled="True"
-                                    ValueChanged="Volume_Changed"/>
-                        </Grid>
-                    </Grid>
-                </Border>
-                <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}" Height="34"
-                        Margin="0,0,0,2"
-                        ToolTip="Only affects the received audio (phone or other PC) — never this PC's own sounds.">
-                    <Grid x:Name="BalanceSegments">
+                    <!-- Sources : 4 tuiles 2 × 2. Plus d'interrupteur : la tuile
+                         s'allume quand elle est active, le ✕ arrête. -->
+                    <Grid x:Name="SourceTiles" Tag="cascade">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <RadioButton x:Name="BalanceLeft" Grid.Column="0" Content="Left"
-                                     GroupName="Bal" Style="{StaticResource Segment}"
-                                     Checked="Balance_Checked"/>
-                        <RadioButton x:Name="BalanceStereo" Grid.Column="1" Content="Stereo"
-                                     GroupName="Bal" Style="{StaticResource Segment}" IsChecked="True"
-                                     Checked="Balance_Checked"/>
-                        <RadioButton x:Name="BalanceRight" Grid.Column="2" Content="Right"
-                                     GroupName="Bal" Style="{StaticResource Segment}"
-                                     Checked="Balance_Checked"/>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="112"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="112"/>
+                        </Grid.RowDefinitions>
+                        <local:Tile x:Name="PhoneTile" Art="Phone"/>
+                        <local:Tile x:Name="NetworkTile" Grid.Column="2" Art="Globe"/>
+                        <local:Tile x:Name="SendTile" Grid.Row="2" Art="Monitor"/>
+                        <!-- Visible seulement quand la gestion AirPods est activée. -->
+                        <local:Tile x:Name="AirPodsTile" Grid.Row="2" Grid.Column="2" Art="Case"
+                                    Visibility="Collapsed"/>
                     </Grid>
-                </Border>
+
+                    <!-- Son reçu (« SON ÉMIS » pendant l'émission) : volume et
+                         balance du son reçu uniquement, jamais des sons du PC. -->
+                    <Grid x:Name="VolumeCard" Margin="0,10,0,2">
+                        <Border Style="{StaticResource Card}"/>
+                        <!-- Vumètre : aurore diffuse derrière la tuile, nappes générées
+                             en code. Pas de BlurEffect (casse l'acrylique DWM) : la
+                             diffusion vient des dégradés radiaux. Le clip arrondi est
+                             posé en code. -->
+                        <Border x:Name="VuClip" IsHitTestVisible="False">
+                            <Canvas x:Name="VuGlow" Opacity="0"/>
+                        </Border>
+                        <Border CornerRadius="17" Margin="1" BorderBrush="#1AFFFFFF" BorderThickness="0,1,0,0"
+                                IsHitTestVisible="False"/>
+                        <StackPanel Margin="16,14,16,14">
+                            <Grid>
+                                <TextBlock x:Name="VolumeHeader" Text="RECEIVED AUDIO"
+                                           FontFamily="{StaticResource Body}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource LabelSecondary}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="VolumePercent" Text="—" HorizontalAlignment="Right"
+                                           FontFamily="{StaticResource Body}" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Label}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Height="44" Margin="0,12,0,0">
+                                <local:VolumeBar x:Name="VolumeSlider" Style="{StaticResource VolumeBarStyle}"
+                                                 ValueChanged="Volume_Changed"/>
+                                <Button x:Name="MuteButton" Content="&#xE995;" Style="{StaticResource BarIconButton}"
+                                        Width="40" Height="40" Margin="3,0,0,0"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        Click="Mute_Click">
+                                    <Button.Foreground>
+                                        <SolidColorBrush x:Name="MuteBrush" Color="#1B1D22"/>
+                                    </Button.Foreground>
+                                </Button>
+                            </Grid>
+                            <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}"
+                                    Height="34" Margin="0,12,0,0">
+                                <Grid x:Name="BalanceSegments">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <RadioButton x:Name="BalanceLeft" Grid.Column="0" Content="Left"
+                                                 GroupName="Bal" Style="{StaticResource Segment}"
+                                                 Checked="Balance_Checked"/>
+                                    <RadioButton x:Name="BalanceStereo" Grid.Column="1" Content="Stereo"
+                                                 GroupName="Bal" Style="{StaticResource Segment}" IsChecked="True"
+                                                 Checked="Balance_Checked"/>
+                                    <RadioButton x:Name="BalanceRight" Grid.Column="2" Content="Right"
+                                                 GroupName="Bal" Style="{StaticResource Segment}"
+                                                 Checked="Balance_Checked"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
 
                 </StackPanel>
                 </Grid>

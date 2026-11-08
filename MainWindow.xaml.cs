@@ -66,10 +66,12 @@ public partial class MainWindow : Window
     private DispatcherTimer? _vuTimer;
     private float _vuShown;
 
+    // Niveaux G / D / B sous le statut de la tuile AirPods.
+    private readonly BatteryBars _airPodsBars = new() { Margin = new Thickness(0, 5, 0, 0) };
+
     public MainWindow()
     {
         InitializeComponent();
-        DeviceList.ItemsSource = _devices;
 
         // Même ordre que DuckLogo.Draw : bec et aile dessous, corps par-dessus.
         LogoBeak.Data = Geometry.Parse(DuckLogo.BeakPath);
@@ -83,6 +85,8 @@ public partial class MainWindow : Window
         // Le contenu déplié pousse le bas de la page : on le suit, pour que
         // ce qui apparaît reste en vue pendant toute l'ouverture.
         AdvancedHost.SizeChanged += (_, _) => { if (_advancedOpen) PageScroll.ScrollToEnd(); };
+        // Fond de l'engrenage : une brosse à nous, allumée en fondu dans les Réglages.
+        SettingsButton.Background = _settingsBrush;
 
         // Les anciennes versions passaient par un câble virtuel ; si l'une
         // d'elles a été tuée brutalement, ses redirections ont survécu dans le
@@ -92,20 +96,22 @@ public partial class MainWindow : Window
         // Tactile : en butée de défilement, WPF fait « rebondir » toute la
         // fenêtre — on garde le panneau immobile.
         ManipulationBoundaryFeedback += (_, e) => e.Handled = true;
-        // Un geste qui commence sur un curseur (volume, balance…) le pilote :
-        // pas de défilement, le toucher redevient un clic-glisser.
+        // Un geste qui commence sur un curseur (volume…) le pilote : pas de
+        // défilement, le toucher redevient un clic-glisser.
         PageScroll.ManipulationStarting += (_, e) =>
         {
             for (var d = e.OriginalSource as DependencyObject; d != null && d != PageScroll;
                  d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
             {
-                if (d is System.Windows.Controls.Slider or System.Windows.Controls.Primitives.ScrollBar)
+                if (d is System.Windows.Controls.Primitives.RangeBase)
                 {
                     e.Cancel();
                     return;
                 }
             }
         };
+
+        WireTiles();
 
         _tray.ShowRequested += () => Dispatcher.Invoke(ToggleFlyout);
         _tray.IconClicked += () => Dispatcher.Invoke(OnTrayIconClick);
@@ -123,7 +129,7 @@ public partial class MainWindow : Window
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) HideFlyout(); };
 
         // La hauteur suit le contenu : rester ancré en bas à droite quand
-        // il change (statut d'émission qui apparaît, appareil ajouté…).
+        // il change (tuile AirPods qui apparaît…).
         SizeChanged += (_, _) => { if (IsVisible) PlaceBottomRight(); };
 
         _net.Changed += () => Dispatcher.Invoke(UpdateNetworkUi);
@@ -144,8 +150,6 @@ public partial class MainWindow : Window
         _net.RemoteBalance += (l, r) => Dispatcher.Invoke(() => SyncBalanceFromRemote(l, r));
         _net.Start();
 
-        Loc.Changed += ApplyLanguage;
-        ApplyLanguage();
         _sender.Changed += () => Dispatcher.Invoke(UpdateSendUi);
         // En émission, le curseur montre le volume émis : il suit aussi les
         // touches physiques (BeginInvoke : l'événement vient d'un rappel COM,
@@ -166,25 +170,29 @@ public partial class MainWindow : Window
         _airPods = new AirPodsGate(Dispatcher);
         _airPodsPopup = new AirPodsPopup { Anchor = this };
         _airPodsPopup.ConnectClicked += () => _ = _airPods.ConnectAsync();
-        _airPodsPopup.LiveActionClicked += ToggleAirPodsConnection;
+        _airPodsPopup.CancelClicked += () => _ = _airPods.CancelConnectAsync();
+        _airPodsPopup.UnlinkClicked += () => _ = _airPods.DisconnectAsync();
         _airPodsPopup.Dismissed += () => _airPods.DismissPrompt();
         _tray.AirPodsRequested += () => Dispatcher.Invoke(ToggleAirPodsConnection);
-        AirPodsBlock.ActionClicked += ToggleAirPodsConnection;
         _airPods.NotifyRequested += (title, text) => _tray.Notify(title, text);
         _airPods.Changed += OnAirPodsChanged;
         _airPods.PromptRequested += OnAirPodsPrompt;
         _airPods.PromptWithdrawn += OnAirPodsPromptWithdrawn;
         _airPods.MessageRequested += OnAirPodsMessage;
         _airPods.StatusPeekRequested += OnAirPodsStatusPeek;
+
+        // Après l'AirPodsGate : la langue rafraîchit toutes les tuiles.
+        Loc.Changed += ApplyLanguage;
+        ApplyLanguage();
         _airPods.Start();
 
         // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
         // passe sa vie cachée, pas de réveil 20 fois par seconde pour rien.
-        // L'aurore est clippée aux coins arrondis de la carte (rayon du style
-        // Card) : un Border ne rogne pas ses enfants sur les angles, on pose
-        // la géométrie à la main à chaque changement de taille.
+        // L'aurore est clippée aux coins arrondis de la tuile (rayon 18) : un
+        // Border ne rogne pas ses enfants sur les angles, on pose la
+        // géométrie à la main à chaque changement de taille.
         VuClip.SizeChanged += (_, _) => VuClip.Clip = new RectangleGeometry(
-            new Rect(0, 0, VuClip.ActualWidth, VuClip.ActualHeight), 14, 14);
+            new Rect(0, 0, VuClip.ActualWidth, VuClip.ActualHeight), 18, 18);
         CreateVuBlobs();
 
         _vuTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
@@ -196,8 +204,9 @@ public partial class MainWindow : Window
         };
 
         // Repère sonore du volume : au relâchement de la souris, sinon dès que
-        // la valeur ne bouge plus (clavier). Tant que le bouton est enfoncé,
-        // le minuteur patiente — il rattrape aussi un relâchement hors curseur.
+        // la valeur ne bouge plus (clavier, molette). Tant que le bouton est
+        // enfoncé, le minuteur patiente — il rattrape aussi un relâchement
+        // hors de la barre.
         VolumeSlider.PreviewMouseLeftButtonUp += (_, _) =>
         {
             if (_toneTimer.IsEnabled) PlayVolumeTone();
@@ -215,25 +224,39 @@ public partial class MainWindow : Window
 
         // Mise à jour automatique en arrière-plan : si une nouvelle release
         // existe, l'installateur silencieux remplace l'app et la relance.
-        _ = Updater.CheckAndUpdateAsync(msg =>
-            Dispatcher.Invoke(() => _tray.Notify("Duckast", msg)));
+        CheckUpdatesAtLaunch();
 
-        Loaded += (_, _) =>
-        {
-            ShowInstalledVersion();
-            AnimateIn();
-        };
+        Loaded += (_, _) => AnimateIn();
     }
 
-    /// <summary>
-    /// Le panneau garde sur toutes les pages la hauteur de la page principale
-    /// (voir NavigateTo) : c'est elle qui fixe la taille, les autres pages
-    /// défilent si elles sont plus longues — pas de vide sous la page principale.
-    /// </summary>
-    private void ShowInstalledVersion()
+    private async void CheckUpdatesAtLaunch()
     {
-        UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
-                                  $"Version installée : {Updater.CurrentVersion}");
+        await Updater.CheckAndUpdateAsync(msg =>
+            Dispatcher.Invoke(() => _tray.Notify("Duckast", msg)));
+        UpdateUpdateTile();
+    }
+
+    /// <summary>Gestes des tuiles : toucher = action principale, ✕ = arrêter.</summary>
+    private void WireTiles()
+    {
+        PhoneTile.Click += OnPhoneTileClick;
+        PhoneTile.CloseClick += DisconnectPhone;
+        PhoneTile.MouseRightButtonUp += (_, e) => e.Handled = ShowPhoneMenu();
+        NetworkTile.Click += () => _net.ResumeSender();
+        NetworkTile.CloseClick += () => _net.PauseCurrentSender();
+        SendTile.Click += () => SetSending(!_sendWanted);
+        SendTile.CloseClick += () => SetSending(false);
+        AirPodsTile.Footer = _airPodsBars;
+        AirPodsTile.Click += OnAirPodsTileClick;
+        AirPodsTile.CloseClick += OnAirPodsTileClose;
+
+        AutostartTile.Click += ToggleAutostart;
+        DarkModeTile.Click += ToggleDarkMode;
+        UpdateTile.Click += CheckUpdate;
+        AirPodsSettingsTile.Click += ToggleAirPodsManagement;
+
+        VolumeSlider.IsEnabledChanged += (_, _) => UpdateVolumeReadout();
+        VolumeSlider.SizeChanged += (_, _) => UpdateVolumeReadout();
     }
 
     /// <summary>
@@ -279,17 +302,13 @@ public partial class MainWindow : Window
         SetAdvancedOpen(!_advancedOpen, animate: true);
 
     /// <summary>
-    /// Déplie ou replie les réglages avancés sous leur ligne : la hauteur de
-    /// AdvancedHost va de 0 à celle de son contenu. La fenêtre ne bouge pas,
-    /// c'est la page qui défile (PageScroll).
+    /// Déplie ou replie les réglages avancés sous leur ligne. La fenêtre ne
+    /// bouge pas, c'est la page qui défile (PageScroll).
     /// </summary>
     private void SetAdvancedOpen(bool open, bool animate)
     {
         _advancedOpen = open;
-        AdvancedNavButton.Tag = open ? "open" : null; // chevron, voir le style NavRow
-        AdvancedHost.IsHitTestVisible = open;
-
-        double height = 0;
+        AdvancedNavButton.Tag = open ? "open" : null; // chevron, voir le style ExpandRow
         if (open)
         {
             PopulateOutputCombo();
@@ -297,25 +316,42 @@ public partial class MainWindow : Window
             _syncingOpus = true;
             OpusToggle.IsChecked = Prefs.OpusEnabled;
             _syncingOpus = false;
-            // Mesure à part : dans un hôte de hauteur 0, la taille voulue
-            // du contenu serait rabotée à 0.
-            AdvancedContent.Measure(new System.Windows.Size(
-                AdvancedHost.ActualWidth, double.PositiveInfinity));
-            height = AdvancedContent.DesiredSize.Height;
         }
+        Reveal(AdvancedHost, AdvancedContent, open, animate);
+        // Le résumé s'efface quand le détail est sous les yeux.
+        AdvancedSummary.BeginAnimation(OpacityProperty, null);
+        if (animate) AdvancedSummary.BeginAnimation(OpacityProperty, Palette.Anim(open ? 0 : 1, 220));
+        else AdvancedSummary.Opacity = open ? 0 : 1;
+        if (open && animate) Cascade(AdvancedContent, step: 28, rise: 8);
+    }
 
+    /// <summary>
+    /// Déplie ou replie un bloc sur place : la hauteur de <paramref name="host"/>
+    /// va de 0 à celle de <paramref name="content"/> (mesurée à part : dans un
+    /// hôte de hauteur 0, elle serait rabotée), avec un fondu.
+    /// </summary>
+    private static void Reveal(FrameworkElement host, FrameworkElement content, bool open, bool animate)
+    {
+        host.IsHitTestVisible = open;
+        double height = 0;
+        if (open)
+        {
+            double width = host.ActualWidth > 0 ? host.ActualWidth : double.PositiveInfinity;
+            content.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+            height = content.DesiredSize.Height;
+        }
         if (!animate)
         {
-            AdvancedHost.BeginAnimation(HeightProperty, null);
-            AdvancedHost.BeginAnimation(OpacityProperty, null);
-            AdvancedHost.Height = height;
-            AdvancedHost.Opacity = open ? 1 : 0;
+            host.BeginAnimation(HeightProperty, null);
+            host.BeginAnimation(OpacityProperty, null);
+            host.Height = height;
+            host.Opacity = open ? 1 : 0;
             return;
         }
-        AdvancedHost.BeginAnimation(HeightProperty,
-            new DoubleAnimation(height, TimeSpan.FromMilliseconds(340))
+        host.BeginAnimation(HeightProperty,
+            new DoubleAnimation(height, TimeSpan.FromMilliseconds(380))
             { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
-        AdvancedHost.BeginAnimation(OpacityProperty,
+        host.BeginAnimation(OpacityProperty,
             new DoubleAnimation(open ? 1 : 0, TimeSpan.FromMilliseconds(open ? 340 : 180)));
     }
 
@@ -323,8 +359,8 @@ public partial class MainWindow : Window
         NavigateTo(AppPage.Diag, forward: true);
 
     /// <summary>
-    /// Applique la langue à tous les textes fixes ; les textes d'état
-    /// (en-têtes dynamiques, statuts) sont régénérés par les Update*Ui.
+    /// Applique la langue à tous les textes fixes, puis régénère les états
+    /// (tuiles, en-têtes dynamiques).
     /// </summary>
     private void ApplyLanguage()
     {
@@ -334,11 +370,6 @@ public partial class MainWindow : Window
         _syncingLanguage = false;
 
         GeneralHeader.Text = Loc.T("GENERAL", "GÉNÉRAL");
-        AutostartLabel.Text = Loc.T("Launch at Windows startup", "Ouvrir au démarrage de Windows");
-        DarkModeLabel.Text = Loc.T("Dark mode", "Mode sombre");
-        LanguageLabel.Text = Loc.T("Language", "Langue");
-        UpdateLabel.Text = Loc.T("Updates", "Mise à jour");
-        CheckUpdateButton.Content = Loc.T("Check", "Vérifier");
         OutputLabel.Text = Loc.T("Received audio output", "Sortie du son reçu");
         OutputRow.ToolTip = Loc.T(
             "Applies to audio received from the network. Bluetooth phone audio always follows Windows' default output.",
@@ -351,13 +382,18 @@ public partial class MainWindow : Window
         OpusRow.ToolTip = Loc.T(
             "Compresses the sent stream to 256 kbit/s (transparent) — 6x less bandwidth, useful on busy Wi-Fi.",
             "Compresse le flux émis à 256 kbit/s (transparent) — 6x moins de bande passante, utile en Wi-Fi chargé.");
+        OpusToggle.Content = Loc.T("On", "Activée");
+        OpusToggle.Tag = Loc.T("Off", "Désactivée");
         AdvancedNavLabel.Text = Loc.T("Advanced", "Avancé");
+        AdvancedSummary.Text = Loc.T("Output, destination, Opus, diagnostics",
+                                     "Sortie, destination, Opus, diagnostics");
         DiagNavLabel.Text = Loc.T("Diagnostics", "Diagnostic");
-        AirPodsEnableLabel.Text = Loc.T("Manage AirPods connection", "Gérer la connexion des AirPods");
         AirPodsDeviceLabel.Text = Loc.T("Device", "Appareil");
-        AirPodsPromptLabel.Text = Loc.T("Offer to connect when detected", "Proposer la connexion si détectés");
-        AirPodsPreviewLabel.Text = Loc.T("Popup preview", "Aperçu de la popup");
-        AirPodsPreviewButton.Content = Loc.T("Show", "Afficher");
+        AirPodsPromptLabel.Text = Loc.T("Offer when the case opens", "Proposer à l'ouverture du boîtier");
+        AirPodsPromptToggle.Content = Loc.T("On", "Activé");
+        AirPodsPromptToggle.Tag = Loc.T("Off", "Désactivé");
+        AirPodsPreviewLabel.Text = Loc.T("Window preview", "Aperçu de la fenêtre");
+        AirPodsPreviewButton.ToolTip = Loc.T("Show the window", "Afficher la fenêtre");
         DiagStreamHeader.Text = Loc.T("STREAM", "FLUX");
         DiagLogHeader.Text = Loc.T("LOG", "JOURNAL");
         DiagLatencyLabel.Text = Loc.T("Latency", "Latence");
@@ -368,13 +404,6 @@ public partial class MainWindow : Window
             PopulateDestCombo();
         }
 
-        EmptyHint.Text = Loc.T("No paired phone — pair one in Windows Bluetooth settings.",
-                               "Aucun téléphone appairé — appaire-le dans les réglages Bluetooth de Windows.");
-        NetworkLabel.Text = Loc.T("Local network", "Réseau local");
-        NetworkRow.ToolTip = Loc.T(
-            "Another PC running Duckast can stream its audio here: turn on “Send” over there, the connection is automatic.",
-            "Un autre PC avec Duckast peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.");
-        SendLabel.Text = Loc.T("Send this PC's audio", "Envoyer le son de ce PC");
         BalanceLeft.Content = Loc.T("Left", "Gauche");
         BalanceStereo.Content = Loc.T("Stereo", "Stéréo");
         BalanceRight.Content = Loc.T("Right", "Droite");
@@ -382,14 +411,16 @@ public partial class MainWindow : Window
             "Only affects the received audio (phone or other PC) — never this PC's own sounds.",
             "N'agit que sur le son reçu (téléphone ou autre PC) — jamais sur les sons de ce PC.");
 
-        if (_page != AppPage.Main)
-        {
-            TitleText.Text = TitleFor(_page);
-            UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
-                                      $"Version installée : {Updater.CurrentVersion}");
-        }
+        TitleText.Text = TitleFor(_page);
+        SettingsButton.ToolTip = _page == AppPage.Main ? Loc.T("Settings", "Réglages") : Loc.T("Back", "Retour");
+        _airPodsBars.ApplyLanguage();
+        UpdateSettingsTiles();
+        SyncAirPodsSettings(repopulateDevices: false);
+        UpdatePhoneTile();
         UpdateNetworkUi();
         UpdateSendUi();
+        UpdateAirPodsUi();
+        UpdateVolumeReadout();
         _tray.ApplyLanguage();
     }
 
@@ -415,16 +446,20 @@ public partial class MainWindow : Window
         _ => Loc.T("Diagnostics", "Diagnostic"),
     };
 
-    private const double LogoWidth = 44; // largeur de LogoHost dans le XAML
+    private static readonly System.Windows.Media.Color HeaderIdle = System.Windows.Media.Color.FromArgb(0x3D, 0x78, 0x78, 0x80);
+    private static readonly System.Windows.Media.Color HeaderLit = System.Windows.Media.Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF);
+    private readonly SolidColorBrush _settingsBrush = new(HeaderIdle);
 
     /// <summary>
     /// Bascule de page avec transition : la page quittée s'efface en glissant
     /// pendant que la nouvelle arrive depuis la droite (navigation avant) ou
-    /// la gauche (retour) ; le titre, le logo et le bouton suivent. En
-    /// quittant la page principale, la zone défilante est figée à sa hauteur
-    /// du moment : le panneau (SizeToContent) garde sa taille sur toutes les
-    /// pages, ce qui dépasse défile. <paramref name="animate"/> à false :
-    /// bascule sèche, pour un changement fait fenêtre cachée.
+    /// la gauche (retour), ses blocs en cascade ; le titre glisse, le logo
+    /// rebondit, l'engrenage tourne et s'allume hors de l'accueil.
+    ///
+    /// Toutes les pages ont la taille de l'accueil : en la quittant, la zone
+    /// défilante est figée à sa hauteur du moment, ce qui dépasse défile.
+    /// <paramref name="animate"/> à false : bascule sèche, pour un changement
+    /// fait fenêtre cachée.
     /// </summary>
     private void NavigateTo(AppPage target, bool forward, bool animate = true)
     {
@@ -450,18 +485,11 @@ public partial class MainWindow : Window
         {
             // Les Réglages s'ouvrent toujours repliés.
             if (_page == AppPage.Main) SetAdvancedOpen(false, animate: false);
-            _syncingAutostart = true;
-            AutostartToggle.IsChecked = IsAutostartEnabled();
-            _syncingAutostart = false;
-            _syncingDarkMode = true;
-            DarkModeToggle.IsChecked = Prefs.DarkMode;
-            _syncingDarkMode = false;
             _syncingLanguage = true;
             LangEnglish.IsChecked = !Loc.French;
             LangFrench.IsChecked = Loc.French;
             _syncingLanguage = false;
-            UpdateStatus.Text = Loc.T($"Installed version: {Updater.CurrentVersion}",
-                                      $"Version installée : {Updater.CurrentVersion}");
+            UpdateSettingsTiles();
             SyncAirPodsSettings(repopulateDevices: true);
         }
         else if (target == AppPage.Diag)
@@ -472,7 +500,6 @@ public partial class MainWindow : Window
         var leaving = PanelFor(_page);
         var arriving = PanelFor(target);
         _page = target;
-        TitleText.Text = TitleFor(target);
         bool main = target == AppPage.Main;
 
         if (animate)
@@ -480,54 +507,48 @@ public partial class MainWindow : Window
             AnimatePanelOut(leaving, toLeft: forward);
             AnimatePanelIn(arriving, fromRight: forward);
 
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            TitleText.Text = TitleFor(target);
             TitleText.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(260)));
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(280)));
             TitleSlide.BeginAnimation(TranslateTransform.XProperty,
-                new DoubleAnimation(forward ? 14 : -14, 0, TimeSpan.FromMilliseconds(320))
-                { EasingFunction = ease });
-            // Le logo se replie hors de la page principale : le titre prend
-            // sa place en glissant, et la lui rend au retour.
-            LogoHost.BeginAnimation(WidthProperty,
-                new DoubleAnimation(main ? LogoWidth : 0, TimeSpan.FromMilliseconds(320))
-                { EasingFunction = ease });
-            LogoHost.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(main ? 1 : 0, TimeSpan.FromMilliseconds(main ? 320 : 160)));
-            // Le pictogramme change en tournant d'un quart de tour.
+                new DoubleAnimation(forward ? 16 : -16, 0, TimeSpan.FromMilliseconds(380))
+                { EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
+            Pop(_logoPop, 0.8, 380);
+            // L'engrenage tourne d'un tiers de tour et s'allume hors de l'accueil.
             SettingsSpin.BeginAnimation(RotateTransform.AngleProperty,
-                new DoubleAnimation(forward ? -90 : 90, 0, TimeSpan.FromMilliseconds(340))
-                { EasingFunction = ease });
-            SettingsButton.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240)));
+                new DoubleAnimation(forward ? -120 : 120, 0, TimeSpan.FromMilliseconds(560))
+                { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.45 } });
+            Palette.ColorTo(_settingsBrush, main ? HeaderIdle : HeaderLit, true, 320);
         }
         else
         {
             SnapPanel(leaving, visible: false);
             SnapPanel(arriving, visible: true);
-            LogoHost.BeginAnimation(WidthProperty, null);
-            LogoHost.BeginAnimation(OpacityProperty, null);
-            LogoHost.Width = main ? LogoWidth : 0;
-            LogoHost.Opacity = main ? 1 : 0;
+            TitleText.Text = TitleFor(target);
+            Palette.ColorTo(_settingsBrush, main ? HeaderIdle : HeaderLit, false);
         }
 
-        SettingsButton.Content = target switch
-        {
-            AppPage.Main => "",     // engrenage
-            AppPage.Settings => "", // croix
-            _ => "",                // chevron retour
-        };
-        SettingsButton.ToolTip = target == AppPage.Main
-            ? Loc.T("Settings", "Réglages") : Loc.T("Back", "Retour");
+        // Engrenage partout (allumé dans les Réglages), flèche retour au diagnostic.
+        SettingsButton.Content = target == AppPage.Diag ? "\uE72B" : "\uE713";
+        SettingsButton.ToolTip = main ? Loc.T("Settings", "Réglages") : Loc.T("Back", "Retour");
     }
 
-    private static TranslateTransform SlideOf(UIElement panel)
+    private static TranslateTransform SlideOf(UIElement panel) => MotionOf(panel).Shift;
+
+    /// <summary>
+    /// Transformations de mouvement d'un bloc (échelle puis translation),
+    /// créées à la première demande et réutilisées ensuite.
+    /// </summary>
+    private static (TranslateTransform Shift, ScaleTransform Scale) MotionOf(UIElement element)
     {
-        if (panel.RenderTransform is not TranslateTransform slide)
-        {
-            slide = new TranslateTransform();
-            panel.RenderTransform = slide;
-        }
-        return slide;
+        if (element.RenderTransform is TransformGroup group && group.Children.Count == 2
+            && group.Children[0] is ScaleTransform s && group.Children[1] is TranslateTransform t)
+            return (t, s);
+        var scale = new ScaleTransform(1, 1);
+        var shift = new TranslateTransform();
+        element.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+        element.RenderTransform = new TransformGroup { Children = { scale, shift } };
+        return (shift, scale);
     }
 
     /// <summary>
@@ -550,33 +571,59 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Entrée en cascade : chaque bloc de la page (en-tête, carte…) monte et
-    /// apparaît un instant après le précédent. Images clés plutôt que
-    /// BeginTime : avant son départ, une animation différée laisserait voir
-    /// le bloc à pleine opacité.
+    /// apparaît un instant après le précédent ; dans une grille de tuiles
+    /// (Tag="cascade"), chaque tuile entre à son tour en se posant. Images
+    /// clés plutôt que BeginTime : avant son départ, une animation différée
+    /// laisserait voir le bloc à pleine opacité.
     /// </summary>
-    private static void Cascade(UIElement page)
+    private static void Cascade(UIElement page, int step = 36, double rise = 14)
     {
         if (page is not System.Windows.Controls.Panel panel) return;
         int rank = 0;
         foreach (UIElement block in panel.Children)
         {
             if (block.Visibility != Visibility.Visible) continue;
-            var start = TimeSpan.FromMilliseconds(32 * rank++);
-            var end = start + TimeSpan.FromMilliseconds(260);
-
-            var fade = new DoubleAnimationUsingKeyFrames();
-            fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, TimeSpan.Zero));
-            fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, start));
-            fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, end));
-            block.BeginAnimation(OpacityProperty, fade);
-
-            var rise = new DoubleAnimationUsingKeyFrames();
-            rise.KeyFrames.Add(new DiscreteDoubleKeyFrame(14, TimeSpan.Zero));
-            rise.KeyFrames.Add(new DiscreteDoubleKeyFrame(14, start));
-            rise.KeyFrames.Add(new EasingDoubleKeyFrame(0, end,
-                new CubicEase { EasingMode = EasingMode.EaseOut }));
-            SlideOf(block).BeginAnimation(TranslateTransform.YProperty, rise);
+            if (block is System.Windows.Controls.Grid { Tag: "cascade" } grid)
+            {
+                foreach (UIElement tile in grid.Children)
+                {
+                    if (tile.Visibility == Visibility.Visible) Enter(tile, rank++, step, rise, pop: true);
+                }
+                continue;
+            }
+            Enter(block, rank++, step, rise, pop: false);
         }
+    }
+
+    /// <summary>Entrée d'un bloc, après <paramref name="rank"/> pas de <paramref name="step"/> ms.</summary>
+    private static void Enter(UIElement block, int rank, int step, double rise, bool pop)
+    {
+        var start = TimeSpan.FromMilliseconds(step * rank);
+        var end = start + TimeSpan.FromMilliseconds(pop ? 460 : 300);
+
+        var fade = new DoubleAnimationUsingKeyFrames();
+        fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, TimeSpan.Zero));
+        fade.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, start));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, start + TimeSpan.FromMilliseconds(240)));
+        block.BeginAnimation(OpacityProperty, fade);
+
+        var (shift, scale) = MotionOf(block);
+        var up = new DoubleAnimationUsingKeyFrames();
+        up.KeyFrames.Add(new DiscreteDoubleKeyFrame(rise, TimeSpan.Zero));
+        up.KeyFrames.Add(new DiscreteDoubleKeyFrame(rise, start));
+        up.KeyFrames.Add(new EasingDoubleKeyFrame(0, end, new CubicEase { EasingMode = EasingMode.EaseOut }));
+        shift.BeginAnimation(TranslateTransform.YProperty, up);
+
+        if (!pop) return;
+        // Les tuiles se posent : légèrement plus petites, elles prennent
+        // leur taille avec un soupçon de rebond.
+        var grow = new DoubleAnimationUsingKeyFrames();
+        grow.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.92, TimeSpan.Zero));
+        grow.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.92, start));
+        grow.KeyFrames.Add(new EasingDoubleKeyFrame(1, end,
+            new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.35 }));
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
     }
 
     /// <summary>Petit rebond d'échelle, pour marquer un changement (pictogramme, logo).</summary>
@@ -734,14 +781,31 @@ public partial class MainWindow : Window
     private const string RunApprovedPath =
         @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
-    private bool _syncingAutostart;
-    private bool _syncingDarkMode;
-
-    private void DarkMode_Changed(object sender, RoutedEventArgs e)
+    /// <summary>Tuiles « Général » des Réglages, d'après l'état réel.</summary>
+    private void UpdateSettingsTiles()
     {
-        if (!IsLoaded || _syncingDarkMode) return;
-        Prefs.DarkMode = DarkModeToggle.IsChecked == true;
+        string on = Loc.T("On", "Activé"), off = Loc.T("Off", "Désactivé");
+        bool auto = IsAutostartEnabled();
+        AutostartTile.Title = Loc.T("Launch with Windows", "Lancer avec Windows");
+        AutostartTile.SetState(auto ? TileTint.Green : TileTint.Glass, auto ? on : off);
+        bool dark = Prefs.DarkMode;
+        DarkModeTile.Title = Loc.T("Dark mode", "Mode sombre");
+        DarkModeTile.SetState(dark ? TileTint.Green : TileTint.Glass, dark ? on : off);
+        LanguageTile.Title = Loc.T("Language", "Langue");
+        UpdateUpdateTile();
+    }
+
+    private void ToggleDarkMode()
+    {
+        Prefs.DarkMode = !Prefs.DarkMode;
         WindowEffects.ApplyVeil(this);
+        UpdateSettingsTiles();
+    }
+
+    private void ToggleAutostart()
+    {
+        SetAutostart(!IsAutostartEnabled());
+        UpdateSettingsTiles();
     }
 
     private static bool IsAutostartEnabled()
@@ -757,14 +821,13 @@ public partial class MainWindow : Window
         catch { return false; }
     }
 
-    private void Autostart_Changed(object sender, RoutedEventArgs e)
+    private static void SetAutostart(bool enabled)
     {
-        if (!IsLoaded || _syncingAutostart) return;
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunKeyPath);
             using var approved = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunApprovedPath);
-            if (AutostartToggle.IsChecked == true)
+            if (enabled)
             {
                 string exe = Environment.ProcessPath
                     ?? System.IO.Path.Combine(AppContext.BaseDirectory, "AudioShare.exe");
@@ -889,7 +952,7 @@ public partial class MainWindow : Window
         if (!_sender.IsRunning) return;
         _sender.Stop();
         await Task.Delay(700);
-        if (SendToggle.IsChecked == true) _sender.Start();
+        if (_sendWanted) _sender.Start();
     }
 
     // ---------- Diagnostic ----------
@@ -933,40 +996,99 @@ public partial class MainWindow : Window
         catch { return ""; }
     }
 
-    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    private bool _checkingUpdate;
+
+    /// <summary>
+    /// Tuile « Mises à jour » : « À jour · 1.9.1 » (point vert) une fois la
+    /// vérification faite, la flèche tourne pendant qu'elle a lieu. Le
+    /// message complet de la dernière vérification est dans l'infobulle.
+    /// </summary>
+    private void UpdateUpdateTile()
     {
-        CheckUpdateButton.IsEnabled = false;
+        UpdateTile.Title = Loc.T("Updates", "Mises à jour");
+        string v = Updater.CurrentVersion;
+        if (_checkingUpdate)
+        {
+            UpdateTile.SetState(TileTint.Glass, Loc.T("Checking…", "Vérification…"));
+            return;
+        }
+        switch (Updater.LastOutcome)
+        {
+            case UpdateOutcome.UpToDate:
+                UpdateTile.SetState(TileTint.Glass, Loc.T($"Up to date · {v}", $"À jour · {v}"), dot: Palette.Green);
+                break;
+            case UpdateOutcome.Updating:
+                UpdateTile.SetState(TileTint.Orange, Loc.T("Installing…", "Installation…"));
+                break;
+            case UpdateOutcome.Failed:
+                UpdateTile.SetState(TileTint.Glass, Loc.T("Check failed", "Vérification impossible"), dot: Palette.Red);
+                break;
+            case UpdateOutcome.DevCopy:
+                UpdateTile.SetState(TileTint.Glass, Loc.T($"Dev copy · {v}", $"Copie de dev · {v}"));
+                break;
+            default:
+                UpdateTile.SetState(TileTint.Glass, $"Version {v}");
+                break;
+        }
+    }
+
+    private async void CheckUpdate()
+    {
+        if (_checkingUpdate) return;
+        _checkingUpdate = true;
+        UpdateTile.SetBusy(true);
+        UpdateUpdateTile();
+        var started = DateTime.UtcNow;
         try
         {
             await Updater.CheckAndUpdateAsync(
-                msg => Dispatcher.Invoke(() => SetTextFaded(UpdateStatus, msg)),
+                msg => Dispatcher.Invoke(() => UpdateTile.ToolTip = msg),
                 verbose: true);
+            // Une réponse instantanée paraîtrait n'avoir rien fait : la
+            // flèche fait au moins un tour.
+            var left = TimeSpan.FromMilliseconds(800) - (DateTime.UtcNow - started);
+            if (left > TimeSpan.Zero) await Task.Delay(left);
         }
         finally
         {
-            CheckUpdateButton.IsEnabled = true;
+            _checkingUpdate = false;
+            UpdateTile.SetBusy(false);
+            UpdateUpdateTile();
         }
     }
 
     // ---------- Session du téléphone ----------
 
+    /// <summary>
+    /// Tuile « Réseau local » : en écoute (verre), reçoit (vert, ✕ = mettre
+    /// l'émetteur en pause), en pause (un toucher reprend).
+    /// </summary>
     private void UpdateNetworkUi()
     {
-        // État compact à droite de la ligne « Réseau local », comme le statut
-        // des appareils Bluetooth juste au-dessus.
         if (_net.IsReceiving)
         {
-            // Latence du tampon en petit : la santé du lien d'un coup d'œil.
-            NetworkStatus.Text = _net.LatencyMs is int ms
-                ? $"🎵 {_net.SenderName} · {ms} ms"
-                : $"🎵 {_net.SenderName}";
-            NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("Green");
+            NetworkTile.SetState(TileTint.Green, Loc.T("Receiving", "Reçoit"),
+                Loc.T($"from {_net.SenderName}", $"depuis {_net.SenderName}"), close: true);
+            // Latence du tampon en infobulle : la santé du lien sans faire
+            // clignoter la tuile chaque seconde.
+            NetworkTile.ToolTip = _net.LatencyMs is int ms
+                ? Loc.T($"{_net.SenderName} · {ms} ms latency", $"{_net.SenderName} · latence {ms} ms")
+                : null;
+        }
+        else if (_net.PausedSender is string paused)
+        {
+            NetworkTile.SetState(TileTint.Glass, Loc.T("Paused", "En pause"), Loc.T("Tap to resume", "Toucher pour reprendre"));
+            NetworkTile.ToolTip = Loc.T($"Audio from {paused} is paused.", $"Le son de {paused} est en pause.");
         }
         else
         {
-            NetworkStatus.Text = Loc.T("listening", "en écoute");
-            NetworkStatus.Foreground = (System.Windows.Media.Brush)FindResource("LabelTertiary");
+            NetworkTile.SetState(TileTint.Glass, Loc.T("Listening", "En écoute"), Loc.T("No PC", "Aucun PC"));
+            NetworkTile.ToolTip = Loc.T(
+                "Another PC running Duckast can stream its audio here: turn on “Send” over there, the connection is automatic.",
+                "Un autre PC avec Duckast peut diffuser son audio ici : active « Envoyer » là-bas, la connexion est automatique.");
         }
+        NetworkTile.Title = Loc.T("Local network", "Réseau local");
+        NetworkTile.Clickable = !_net.IsReceiving && _net.PausedSender != null;
         UpdateTrayIcon();
         VolumeSlider.IsEnabled = PhoneAudio.IsPresent || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
@@ -989,23 +1111,61 @@ public partial class MainWindow : Window
         else if (Math.Abs(l - 1f) < eps && Math.Abs(r - 1f) < eps) BalanceStereo.IsChecked = true;
     }
 
-    private void SendToggle_Changed(object sender, RoutedEventArgs e)
+    // L'utilisateur veut émettre (la tuile « Envoyer » est allumée).
+    private bool _sendWanted;
+    // Dernier récepteur joint : la tuile éteinte dit vers qui elle enverrait.
+    private string? _lastReceiver;
+
+    private void SetSending(bool on)
     {
-        if (!IsLoaded) return;
-        if (SendToggle.IsChecked == true) _sender.Start();
+        _sendWanted = on;
+        if (on) _sender.Start();
         else _sender.Stop();
         UpdateSendUi();
     }
 
+    /// <summary>
+    /// Tuile « Envoyer » : éteinte (verre), sinon bleue — recherche,
+    /// connexion puis émission ; le ✕ arrête. La section du volume devient
+    /// « SON ÉMIS » pendant l'émission.
+    /// </summary>
     private void UpdateSendUi()
     {
-        bool statusWasVisible = SendStatus.Visibility == Visibility.Visible;
-        SendStatus.Text = _sender.State;
-        SendStatus.Visibility = string.IsNullOrEmpty(_sender.State)
-            ? Visibility.Collapsed : Visibility.Visible;
-        if (!statusWasVisible && SendStatus.Visibility == Visibility.Visible)
-            SendStatus.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)));
+        if (_sender.Phase == SendPhase.Streaming && _sender.PeerName != null) _lastReceiver = _sender.PeerName;
+        string? target = Prefs.SendTarget ?? _lastReceiver;
+        string? toTarget = target != null ? Loc.T($"to {target}", $"vers {target}") : null;
+
+        SendTile.Title = Loc.T("Send", "Envoyer");
+        if (!_sender.IsRunning)
+        {
+            SendTile.SetState(TileTint.Glass, Loc.T("Off", "Éteint"),
+                toTarget ?? Loc.T("Tap to stream", "Toucher pour diffuser"));
+        }
+        else
+        {
+            string? peer = _sender.PeerName != null ? Loc.T($"to {_sender.PeerName}", $"vers {_sender.PeerName}") : null;
+            switch (_sender.Phase)
+            {
+                case SendPhase.Streaming:
+                    SendTile.SetState(TileTint.Blue, Loc.T("Streaming", "Émission"), peer, close: true);
+                    break;
+                case SendPhase.Connecting:
+                    SendTile.SetState(TileTint.Blue, Loc.T("Connecting…", "Connexion…"), peer, close: true);
+                    break;
+                case SendPhase.Retrying:
+                    SendTile.SetState(TileTint.Blue, Loc.T("Retrying…", "Nouvel essai…"), toTarget, close: true);
+                    break;
+                default:
+                    SendTile.SetState(TileTint.Blue, Loc.T("Searching…", "Recherche…"),
+                        toTarget ?? Loc.T("for a receiver", "d'un récepteur"), close: true);
+                    break;
+            }
+        }
+        SendTile.ToolTip = string.IsNullOrEmpty(_sender.State)
+            ? Loc.T("Streams this PC's audio to another Duckast on the network.",
+                    "Diffuse le son de ce PC vers un autre Duckast du réseau.")
+            : _sender.State;
+
         SetTextFaded(VolumeHeader, _sender.IsRunning
             ? Loc.T("SENT AUDIO", "SON ÉMIS")
             : Loc.T("RECEIVED AUDIO", "SON REÇU"));
@@ -1211,6 +1371,7 @@ public partial class MainWindow : Window
         // La latence affichée à côté du nom de l'émetteur vit au même rythme,
         // tout comme la page diagnostic quand elle est ouverte.
         if (_net.IsReceiving && IsVisible) UpdateNetworkUi();
+        _net.ExpirePause();
         if (IsVisible && _page == AppPage.Diag) UpdateDiagnostics();
         PhoneAudio.Refresh();
         LogPhoneSession();
@@ -1350,6 +1511,21 @@ public partial class MainWindow : Window
             MuteButton.RenderTransform = _mutePop;
             Pop(_mutePop, 0.78, 260);
         }
+        UpdateVolumeReadout();
+    }
+
+    private static readonly System.Windows.Media.Color IconOnFill = System.Windows.Media.Color.FromRgb(0x1B, 0x1D, 0x22);
+
+    /// <summary>
+    /// Pourcentage à droite de « SON REÇU », et couleur du pictogramme posé
+    /// dans la barre : sombre sur la partie remplie, blanc sur la piste.
+    /// </summary>
+    private void UpdateVolumeReadout()
+    {
+        int pct = (int)Math.Round(VolumeSlider.Value * 100);
+        VolumePercent.Text = VolumeSlider.IsEnabled ? Loc.T($"{pct}%", $"{pct} %") : "—";
+        bool onFill = VolumeSlider.IsEnabled && VolumeSlider.FilledWidth > 32;
+        Palette.ColorTo(MuteBrush, onFill ? IconOnFill : Colors.White, IsVisible, 220);
     }
 
     // ---------- Balance ----------
@@ -1546,6 +1722,7 @@ public partial class MainWindow : Window
         UpdateAirPodsUi();
         SyncAirPodsSettings(repopulateDevices: false);
         _airPodsPopup.UpdateBattery(_airPods.Battery);
+        _airPodsPopup.RefreshLive();
     }
 
     private void OnAirPodsPrompt(AirPodsPrompt prompt) => _airPodsPopup.ShowPrompt(prompt);
@@ -1554,7 +1731,7 @@ public partial class MainWindow : Window
     private void OnAirPodsStatusPeek()
     {
         if (!AirPodsPopupAvailable || (IsVisible && !_hiding)) return;
-        _airPodsPopup.ShowLive(FillAirPodsView, 8000);
+        _airPodsPopup.ShowLive(LiveAirPodsCard, 8000);
     }
 
     private void OnAirPodsPromptWithdrawn()
@@ -1564,8 +1741,8 @@ public partial class MainWindow : Window
 
     private void OnAirPodsMessage(AirPodsMessage message)
     {
-        // Panneau ouvert : la carte affiche déjà l'état, pas de popup en plus
-        // (sauf pour retirer une proposition devenue caduque).
+        // Panneau ouvert : la tuile affiche déjà l'état, pas de fenêtre en
+        // plus (sauf pour retirer une proposition devenue caduque).
         if (IsVisible && !_hiding)
         {
             if (_airPodsPopup.IsVisible) _airPodsPopup.HideNow();
@@ -1574,16 +1751,50 @@ public partial class MainWindow : Window
         _airPodsPopup.ShowMessage(message);
     }
 
-    /// <summary>Carte de la page principale et entrée du menu de l'icône.</summary>
+    /// <summary>
+    /// Tuile AirPods de la page principale (et entrée du menu de l'icône) :
+    /// verre au repos (« À proximité » + niveaux), orange pendant la
+    /// connexion, verte une fois connectés ; le ✕ annule ou déconnecte.
+    /// </summary>
     private void UpdateAirPodsUi()
     {
         bool shown = _airPods.IsRunning || _airPods.IsOwnedElsewhere;
-        var visibility = shown ? Visibility.Visible : Visibility.Collapsed;
-        AirPodsHeader.Visibility = visibility;
-        AirPodsCard.Visibility = visibility;
+        bool wasShown = AirPodsTile.Visibility == Visibility.Visible;
+        AirPodsTile.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        if (shown && !wasShown && IsVisible) Enter(AirPodsTile, 0, 0, 10, pop: true);
 
-        FillAirPodsView(AirPodsBlock);
-        if (_airPodsPopup.IsShowingLive) FillAirPodsView(_airPodsPopup.View);
+        var state = _airPods.State;
+        var battery = _airPods.Battery;
+        bool hasBattery = battery is { IsEmpty: false };
+        AirPodsTile.Title = _airPods.DeviceName ?? "AirPods";
+
+        if (_airPods.IsOwnedElsewhere)
+            AirPodsTile.SetState(TileTint.Glass, Loc.T("Managed elsewhere", "Gérés ailleurs"),
+                Loc.T("by another Duckast", "par un autre Duckast"));
+        else if (state == AirPodsState.NoDevice)
+            AirPodsTile.SetState(TileTint.Glass, Loc.T("None paired", "Aucun appairé"),
+                Loc.T("Pair them in Windows", "Appaire-les dans Windows"));
+        else if (state == AirPodsState.Connected)
+            AirPodsTile.SetState(TileTint.Green, Loc.T("Connected", "Connectés"),
+                hasBattery ? null : Loc.T("Audio on AirPods", "Son sur les AirPods"), close: _airPods.CanDisconnect);
+        else if (_airPods.IsConnecting)
+            AirPodsTile.SetState(TileTint.Orange, Loc.T("Connecting…", "Connexion…"),
+                hasBattery ? null : Loc.T("Waiting for Windows", "Windows se connecte"), close: !_airPods.IsBusy);
+        else if (_airPods.IsBusy)
+            AirPodsTile.SetState(TileTint.Glass, Loc.T("Disconnecting…", "Déconnexion…"),
+                hasBattery ? null : Loc.T("Locking audio", "Verrouillage"));
+        else if (state == AirPodsState.Present)
+            AirPodsTile.SetState(TileTint.Glass, Loc.T("Nearby", "À proximité"),
+                hasBattery ? null : Loc.T("Tap to connect", "Toucher pour connecter"));
+        else
+            AirPodsTile.SetState(TileTint.Glass, Loc.T("Idle", "Au repos"),
+                Loc.T("Tap to connect", "Toucher pour connecter"));
+
+        _airPodsBars.Visibility = hasBattery ? Visibility.Visible : Visibility.Collapsed;
+        _airPodsBars.SetOnTint(AirPodsTile.Tint != TileTint.Glass, IsVisible);
+        if (hasBattery) _airPodsBars.SetLevels(battery, IsVisible);
+        AirPodsTile.Clickable = _airPods.CanConnect && state != AirPodsState.Connected && !_airPods.IsConnecting;
+        AirPodsTile.ToolTip = _airPods.StatusText;
 
         bool hasDevice = _airPods.DeviceName != null;
         bool disconnect = _airPods.PrefersDisconnect;
@@ -1596,54 +1807,40 @@ public partial class MainWindow : Window
             actionable);
     }
 
-    /// <summary>
-    /// État courant des AirPods dans un bloc (carte de la page principale, ou
-    /// popup ouverte par double-clic sur l'icône) : batteries quand on les
-    /// connaît, sinon une ligne d'état (avec icône pour les états transitoires
-    /// ou finaux).
-    /// </summary>
-    private void FillAirPodsView(AirPodsView view)
+    private void OnAirPodsTileClick()
     {
-        bool hasDevice = _airPods.DeviceName != null;
-        bool disconnect = _airPods.PrefersDisconnect;
-        bool actionable = disconnect ? _airPods.CanDisconnect : _airPods.CanConnect;
+        if (_airPods.CanConnect && _airPods.State != AirPodsState.Connected) _ = _airPods.ConnectAsync();
+    }
 
-        var state = _airPods.State;
-        var battery = _airPods.Battery;
-        bool hasBattery = battery is { IsEmpty: false };
-        view.Title = _airPods.DeviceName ?? "AirPods";
-        view.SetAction(
-            _airPods.IsRunning && hasDevice
-                ? (disconnect ? Loc.T("Disconnect", "Déconnecter") : Loc.T("Connect", "Connecter"))
-                : null,
-            actionable);
-        view.SetBattery(battery);
-        if (state == AirPodsState.Busy || (_airPods.AudioAllowed && state != AirPodsState.Connected))
-            view.SetStatus(AirPodsMessageKind.Progress, _airPods.StatusText);
-        else if (state is AirPodsState.Off or AirPodsState.NoDevice)
-            view.SetStatus(AirPodsMessageKind.Info, _airPods.StatusText);
-        else if (state == AirPodsState.Connected && !hasBattery)
-            view.SetStatus(AirPodsMessageKind.Success, _airPods.StatusText);
-        // Verrouillés : état normal au repos, rien à signaler sous le nom.
-        else if (!hasBattery && state != AirPodsState.Locked)
-            view.SetStatus(null, _airPods.StatusText);
-        else
-            view.SetStatus(null, null);
-        view.SetLed(state == AirPodsState.Connected ? AirPodsView.Led.Green : AirPodsView.Led.White);
+    private void OnAirPodsTileClose()
+    {
+        if (_airPods.State != AirPodsState.Connected && _airPods.IsConnecting) _ = _airPods.CancelConnectAsync();
+        else _ = _airPods.DisconnectAsync();
     }
 
     /// <summary>
-    /// Double-clic sur l'icône : popup AirPods avec l'état du moment et le
-    /// bouton Connecter / Déconnecter. Sans gestion AirPods active, rien.
+    /// État courant pour la fenêtre AirPods ouverte par double-clic ou à
+    /// l'ouverture du boîtier : mêmes couleurs que la tuile.
     /// </summary>
+    private PodsCard LiveAirPodsCard()
+    {
+        string title = _airPods.DeviceName ?? "AirPods";
+        var battery = _airPods.Battery;
+        if (_airPods.State == AirPodsState.Connected) return new(title, PodsCardState.Connected, null, battery);
+        if (_airPods.IsConnecting) return new(title, PodsCardState.Connecting, null, battery);
+        if (_airPods.CanConnect) return new(title, PodsCardState.Prompt, null, battery);
+        return new(title, PodsCardState.Info, _airPods.StatusText, battery);
+    }
+
+    /// <summary>Double-clic sur l'icône : fenêtre AirPods avec l'état du moment.</summary>
     private void ShowAirPodsPopup()
     {
         if (!AirPodsPopupAvailable) return;
         if (IsVisible) HideFlyout();
-        _airPodsPopup.ShowLive(FillAirPodsView);
+        _airPodsPopup.ShowLive(LiveAirPodsCard);
     }
 
-    /// <summary>Bouton de la carte et entrée du menu : connecte ou déconnecte selon l'état.</summary>
+    /// <summary>Entrée du menu de l'icône : connecte ou déconnecte selon l'état.</summary>
     private async void ToggleAirPodsConnection()
     {
         try
@@ -1655,9 +1852,10 @@ public partial class MainWindow : Window
     }
 
     private bool _syncingAirPods;
+    private bool _airPodsToggling;
 
     /// <summary>
-    /// Section AIRPODS des Réglages. La liste des appareils n'est relue qu'à
+    /// Carte AIRPODS des Réglages. La liste des appareils n'est relue qu'à
     /// l'ouverture des Réglages ou à l'activation (pas à chaque changement
     /// d'état, qui fermerait la liste déroulante sous les doigts).
     /// </summary>
@@ -1666,8 +1864,19 @@ public partial class MainWindow : Window
         _syncingAirPods = true;
         try
         {
-            AirPodsEnableToggle.IsChecked = _airPods.IsEnabled;
-            AirPodsOptions.Visibility = _airPods.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+            AirPodsSettingsHeader.Text = "AIRPODS";
+            AirPodsSettingsTile.Title = Loc.T("AirPods management", "Gestion des AirPods");
+            if (!_airPodsToggling)
+            {
+                bool on = _airPods.IsEnabled;
+                AirPodsSettingsTile.SetState(on ? TileTint.Green : TileTint.Glass,
+                    _airPods.IsOwnedElsewhere ? Loc.T("Managed by another Duckast", "Gérée par un autre Duckast")
+                    : on ? Loc.T("On", "Activée") : Loc.T("Off", "Désactivée"));
+            }
+            bool animate = IsVisible && _page == AppPage.Settings;
+            bool open = _airPods.IsRunning;
+            if (open != AirPodsOptionsHost.IsHitTestVisible || !animate)
+                Reveal(AirPodsOptionsHost, AirPodsOptions, open, animate);
             AirPodsPromptToggle.IsChecked = _airPods.PromptOnDetect;
 
             if (_airPods.IsRunning && (repopulateDevices || AirPodsDeviceCombo.ItemsSource == null))
@@ -1682,8 +1891,8 @@ public partial class MainWindow : Window
                 : _airPods.IsRunning
                     ? Loc.T("Windows no longer connects to your AirPods on its own: Duckast offers to connect them when it detects them. Turning this off gives them back to Windows.",
                             "Windows ne se connecte plus seul à tes AirPods : Duckast propose de les connecter quand il les détecte. Désactiver les rend à Windows.")
-                    : Loc.T("Stops Windows from grabbing your AirPods (e.g. while they're on your iPhone). Duckast offers to connect them when they're detected.",
-                            "Empêche Windows d'accaparer tes AirPods (par exemple quand ils sont sur ton iPhone). Duckast propose de les connecter quand ils sont détectés.");
+                    : Loc.T("Tap to stop Windows from grabbing your AirPods (e.g. while they're on your iPhone). Duckast then offers to connect them when they're detected.",
+                            "Touche la carte pour empêcher Windows d'accaparer tes AirPods (par exemple quand ils sont sur ton iPhone). Duckast propose alors de les connecter quand ils sont détectés.");
         }
         finally
         {
@@ -1691,11 +1900,14 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void AirPodsEnable_Changed(object sender, RoutedEventArgs e)
+    /// <summary>Toucher l'en-tête de la carte AIRPODS : active / désactive la gestion.</summary>
+    private async void ToggleAirPodsManagement()
     {
-        if (!IsLoaded || _syncingAirPods) return;
-        bool on = AirPodsEnableToggle.IsChecked == true;
-        AirPodsEnableRow.IsEnabled = false;
+        if (_airPodsToggling || _airPods.IsOwnedElsewhere) return;
+        _airPodsToggling = true;
+        bool on = !_airPods.IsEnabled;
+        AirPodsSettingsTile.SetState(TileTint.Orange,
+            on ? Loc.T("Turning on…", "Activation…") : Loc.T("Turning off…", "Désactivation…"));
         try
         {
             await _airPods.SetEnabledAsync(on);
@@ -1703,7 +1915,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { Log.Write($"AirPods : (dés)activation impossible — {ex.Message}"); }
         finally
         {
-            AirPodsEnableRow.IsEnabled = true;
+            _airPodsToggling = false;
             AirPodsDeviceCombo.ItemsSource = null;
             SyncAirPodsSettings(repopulateDevices: true);
             UpdateAirPodsUi();
@@ -1719,9 +1931,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Affiche la popup telle qu'elle apparaît à la détection (données réelles
-    /// si les AirPods sont à portée). « Connecter » y fonctionne pour de vrai ;
-    /// la fermer ne compte pas comme un refus.
+    /// Affiche la fenêtre telle qu'elle apparaît à la détection (données
+    /// réelles si les AirPods sont à portée). La toucher connecte pour de
+    /// vrai ; la fermer ne compte pas comme un refus.
     /// </summary>
     private void AirPodsPreview_Click(object sender, RoutedEventArgs e)
     {
@@ -1747,7 +1959,7 @@ public partial class MainWindow : Window
         {
             if (_devices.All(d => d.Id != info.Id))
                 _devices.Add(new BtDevice { Id = info.Id, Name = info.Name, Status = "" });
-            EmptyHint.Visibility = Visibility.Collapsed;
+            UpdatePhoneTile();
         });
 
         _watcher.Removed += (_, update) => Dispatcher.Invoke(() =>
@@ -1755,24 +1967,109 @@ public partial class MainWindow : Window
             var dev = _devices.FirstOrDefault(d => d.Id == update.Id);
             if (dev != null) _devices.Remove(dev);
             CloseConnection(update.Id);
+            UpdatePhoneTile();
         });
 
         _watcher.EnumerationCompleted += (_, _) => Dispatcher.Invoke(() =>
         {
-            EmptyHint.Visibility = _devices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            _phonesEnumerated = true;
+            UpdatePhoneTile();
         });
 
         _watcher.Start();
     }
 
-    private async void DeviceList_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (!IsLoaded) return;
-        if (DeviceList.SelectedItem is not BtDevice dev || dev.Id == _activeId) return;
+    private bool _phonesEnumerated;
 
+    /// <summary>
+    /// Téléphone montré par la tuile : celui qui est relié, sinon le dernier
+    /// utilisé, sinon le premier appairé.
+    /// </summary>
+    private BtDevice? ShownPhone =>
+        _devices.FirstOrDefault(d => d.Id == _activeId)
+        ?? _devices.FirstOrDefault(d => d.Id == Prefs.LastPhoneId)
+        ?? _devices.FirstOrDefault();
+
+    private bool PhoneOpened =>
+        _activeId != null
+        && _connections.TryGetValue(_activeId, out var connection)
+        && connection.State == AudioPlaybackConnectionState.Opened;
+
+    /// <summary>
+    /// Tuile du téléphone : disponible (verre, toucher pour recevoir), en
+    /// attente (orange), connecté (vert) ; le ✕ arrête la réception.
+    /// </summary>
+    private void UpdatePhoneTile()
+    {
+        var dev = ShownPhone;
+        PhoneTile.Title = dev?.Name ?? Loc.T("Phone", "Téléphone");
+        if (dev == null)
+        {
+            PhoneTile.SetState(TileTint.Glass,
+                _phonesEnumerated ? Loc.T("None paired", "Aucun appairé") : Loc.T("Looking…", "Recherche…"),
+                _phonesEnumerated ? Loc.T("Pair it in Windows", "Appaire-le dans Windows") : null);
+            PhoneTile.ToolTip = Loc.T("No paired phone — pair one in Windows Bluetooth settings.",
+                                      "Aucun téléphone appairé — appaire-le dans les réglages Bluetooth de Windows.");
+            return;
+        }
+        if (dev.Id == _activeId && PhoneOpened)
+            PhoneTile.SetState(TileTint.Green, Loc.T("Connected", "Connecté"),
+                Loc.T("Audio on this PC", "Son sur ce PC"), close: true);
+        else if (dev.Id == _activeId)
+            PhoneTile.SetState(TileTint.Orange, Loc.T("Waiting…", "En attente…"),
+                Loc.T("Pick this PC on it", "Choisis ce PC dessus"), close: true);
+        else
+            PhoneTile.SetState(TileTint.Glass, Loc.T("Available", "Disponible"),
+                Loc.T("Tap to receive", "Toucher pour recevoir"));
+        PhoneTile.Clickable = dev.Id != _activeId;
+        PhoneTile.ToolTip = _devices.Count > 1
+            ? Loc.T("Right-click to choose another phone.", "Clic droit pour choisir un autre téléphone.")
+            : null;
+    }
+
+    private async void OnPhoneTileClick()
+    {
+        var dev = ShownPhone;
+        if (dev == null)
+        {
+            // Aucun téléphone : on ouvre directement les réglages Bluetooth.
+            try { Process.Start(new ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true }); }
+            catch (Exception ex) { Log.Write($"Bluetooth : réglages introuvables — {ex.Message}"); }
+            return;
+        }
+        if (dev.Id == _activeId) return; // déjà choisi : le ✕ arrête
+        await ConnectPhoneAsync(dev);
+    }
+
+    private async Task ConnectPhoneAsync(BtDevice dev)
+    {
         // Une seule connexion active à la fois
         if (_activeId != null) CloseConnection(_activeId);
+        Prefs.LastPhoneId = dev.Id;
         await StartConnectionAsync(dev);
+    }
+
+    /// <summary>Clic droit sur la tuile : choisir un autre téléphone appairé.</summary>
+    private bool ShowPhoneMenu()
+    {
+        if (_devices.Count < 2) return false;
+        var shown = ShownPhone;
+        var menu = new System.Windows.Controls.ContextMenu { PlacementTarget = PhoneTile };
+        foreach (var dev in _devices)
+        {
+            var item = new System.Windows.Controls.MenuItem { Header = dev.Name, IsChecked = dev == shown };
+            item.Click += async (_, _) =>
+            {
+                Prefs.LastPhoneId = dev.Id;
+                // Réception en cours sur un autre : on bascule ; sinon on
+                // change seulement le téléphone affiché.
+                if (_activeId != null && _activeId != dev.Id) await ConnectPhoneAsync(dev);
+                else UpdatePhoneTile();
+            };
+            menu.Items.Add(item);
+        }
+        menu.IsOpen = true;
+        return true;
     }
 
     // La connexion active a-t-elle déjà été ouverte ? Distingue une liaison
@@ -1806,7 +2103,6 @@ public partial class MainWindow : Window
         if (connection == null)
         {
             CloseConnection(dev.Id);
-            DeviceList.SelectedItem = null;
             return;
         }
 
@@ -1831,7 +2127,6 @@ public partial class MainWindow : Window
             Log.Write($"Bluetooth : activation refusée pour « {dev.Name} » — {ex.Message}");
             if (!IsCurrent(dev.Id, connection)) return;
             CloseConnection(dev.Id);
-            DeviceList.SelectedItem = null;
             return;
         }
         // Arrêtée ou remplacée pendant l'activation.
@@ -1910,11 +2205,10 @@ public partial class MainWindow : Window
         });
     }
 
-    private void Disconnect_Click(object sender, RoutedEventArgs e)
+    /// <summary>✕ de la tuile du téléphone : arrête la réception.</summary>
+    private void DisconnectPhone()
     {
-        e.Handled = true; // ne pas laisser le clic re-sélectionner la ligne
         if (_activeId != null) CloseConnection(_activeId);
-        DeviceList.SelectedItem = null;
     }
 
     // Connexion dont un OpenAsync est en cours. Il peut patienter ~25 s le
@@ -2018,6 +2312,8 @@ public partial class MainWindow : Window
             && _connections.TryGetValue(_activeId, out var connection)
             && connection.State == AudioPlaybackConnectionState.Opened;
         _tray.SetConnected(phone || _net.IsReceiving || _sender.IsStreaming);
+        // Mêmes moments que l'icône : la tuile du téléphone suit l'état réel.
+        UpdatePhoneTile();
     }
 
     /// <summary>

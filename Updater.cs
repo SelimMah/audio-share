@@ -5,6 +5,8 @@ using System.Text.Json;
 
 namespace AudioShare;
 
+internal enum UpdateOutcome { Unknown, UpToDate, Updating, DevCopy, Failed }
+
 /// <summary>
 /// Mise à jour automatique au lancement : interroge la dernière release GitHub,
 /// compare avec la version de l'assembly, télécharge l'installateur et le lance
@@ -24,6 +26,9 @@ internal static class Updater
     /// </summary>
     public static bool IsInstalledCopy =>
         File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
+
+    /// <summary>Issue de la dernière vérification (tuile « Mises à jour » des Réglages).</summary>
+    public static UpdateOutcome LastOutcome { get; private set; }
 
     /// <summary>Version courante en trois chiffres, pour l'affichage.</summary>
     public static string CurrentVersion
@@ -47,6 +52,7 @@ internal static class Updater
             if (!IsInstalledCopy)
             {
                 Log.Write("MàJ : copie de développement, vérification ignorée");
+                LastOutcome = UpdateOutcome.DevCopy;
                 if (verbose) notify(Loc.T("Development copy — updates disabled.",
                                           "Copie de développement — mise à jour désactivée."));
                 return false;
@@ -68,6 +74,7 @@ internal static class Updater
             {
                 Log.Write($"MàJ : à jour (installée {current}, dernière {latest})");
                 Prefs.ClearUpdateAttempts();
+                LastOutcome = UpdateOutcome.UpToDate;
                 if (verbose) notify(Loc.T($"The app is up to date (version {CurrentVersion}).",
                                           $"L'app est à jour (version {CurrentVersion})."));
                 return false;
@@ -99,12 +106,14 @@ internal static class Updater
             if (url == null)
             {
                 Log.Write($"MàJ : release {latest} sans installateur, ignorée");
+                LastOutcome = UpdateOutcome.Failed;
                 if (verbose) notify(Loc.T("The latest release has no installer.",
                                           "La dernière release ne contient pas d'installateur."));
                 return false;
             }
 
             Log.Write($"MàJ : {current} -> {latest}, téléchargement…");
+            LastOutcome = UpdateOutcome.Updating;
             notify(Loc.T($"Updating to version {latest} — downloading…",
                          $"Mise à jour vers la version {latest} — téléchargement…"));
 
@@ -129,6 +138,7 @@ internal static class Updater
         {
             // Hors ligne, API indisponible… : l'app démarre normalement.
             Log.Write($"MàJ : vérification impossible ({ex.Message})");
+            LastOutcome = UpdateOutcome.Failed;
             if (verbose) notify(Loc.T("Could not check for updates — check your connection.",
                                       "Vérification impossible — regarde ta connexion."));
             return false;

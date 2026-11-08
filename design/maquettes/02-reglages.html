@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Reglages tuiles</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width:360px;height:600px;box-sizing:border-box;padding:14px 14px 16px;background:linear-gradient(160deg,#3a3f4a 0%,#23262d 55%,#1a1c21 100%);color:#fff;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;border-radius:12px">
+
+<div style="display:flex;align-items:center;justify-content:space-between;height:40px;margin-bottom:4px">
+<div style="display:flex;align-items:center;gap:10px"><div style="width:26px;height:26px;border-radius:50%;background:#fff"></div><span style="font-size:17px;font-weight:600">Réglages</span></div>
+<button aria-label="Fermer les réglages" style="width:32px;height:32px;border-radius:16px;border:0;background:rgba(255,255,255,.22);color:#fff;font-size:15px">⚙</button>
+</div>
+
+<div style="font-size:11px;letter-spacing:.06em;color:rgba(235,235,245,.6);font-weight:600;margin:10px 6px 6px">GÉNÉRAL</div>
+
+<!-- Tuiles : touchées, elles s'allument comme celles de la page principale -->
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+
+<!-- Lancer avec Windows · activé -->
+<div style="position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(48,209,88,.30),rgba(48,209,88,.10));border:1px solid rgba(48,209,88,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);border-radius:18px;padding:12px 14px;height:88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+<svg width="161" height="88" viewBox="0 0 161 88" style="position:absolute;left:0;top:0" aria-hidden="true"><circle cx="124" cy="40" r="26" fill="#30D158" fill-opacity=".10"/><path d="M111 24 A21 21 0 1 0 137 24" fill="none" stroke="#fff" stroke-opacity=".34" stroke-width="1.4" stroke-linecap="round"/><path d="M124 16 V38" stroke="#fff" stroke-opacity=".34" stroke-width="1.4" stroke-linecap="round"/><circle cx="124" cy="40" r="2.6" fill="#30D158"/></svg>
+<div style="position:relative;font-size:14px;font-weight:600">Lancer avec Windows</div>
+<div style="position:relative;display:flex;align-items:center;gap:6px;font-size:11.5px;color:#30D158"><span style="width:6px;height:6px;border-radius:50%;background:#30D158;box-shadow:0 0 6px #30D158"></span>Activé</div>
+</div>
+
+<!-- Mode sombre · désactivé -->
+<div style="position:relative;overflow:hidden;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10);border-radius:18px;padding:12px 14px;height:88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+<svg width="161" height="88" viewBox="0 0 161 88" style="position:absolute;left:0;top:0" aria-hidden="true"><path d="M136 22 A23 23 0 1 0 142 62 A18 18 0 1 1 136 22 Z" fill="rgba(255,255,255,.05)" stroke="#fff" stroke-opacity=".32" stroke-width="1.2" stroke-linejoin="round"/></svg>
+<div style="position:relative;font-size:14px;font-weight:600">Mode sombre</div>
+<div style="position:relative;display:flex;align-items:center;gap:6px;font-size:11.5px;color:rgba(235,235,245,.6)"><span style="width:6px;height:6px;border-radius:50%;background:rgba(235,235,245,.4)"></span>Désactivé</div>
+</div>
+
+<!-- Langue -->
+<div style="position:relative;overflow:hidden;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10);border-radius:18px;padding:12px 14px;height:88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+<svg width="161" height="88" viewBox="0 0 161 88" style="position:absolute;left:0;top:0" aria-hidden="true"><g fill="none" stroke="#fff" stroke-opacity=".30" stroke-width="1"><circle cx="124" cy="36" r="24"/><ellipse cx="124" cy="36" rx="10" ry="24"/><path d="M100 36 H148"/></g><circle cx="136" cy="26" r="6" fill="#fff" fill-opacity=".16"/><circle cx="136" cy="26" r="2" fill="#fff"/></svg>
+<div style="position:relative;font-size:14px;font-weight:600">Langue</div>
+<div style="position:relative;height:26px;border-radius:9px;background:rgba(120,120,128,.24);display:grid;grid-template-columns:1fr 1fr;padding:2px;gap:2px;box-sizing:border-box"><div style="display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(235,235,245,.6)">English</div><div style="display:flex;align-items:center;justify-content:center;font-size:12px;border-radius:7px;background:rgba(142,142,147,.55)">Français</div></div>
+</div>
+
+<!-- Mises à jour : icône d'action en coin, comme le ✕ des tuiles -->
+<div style="position:relative;overflow:hidden;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10);border-radius:18px;padding:12px 14px;height:88px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between">
+<svg width="161" height="88" viewBox="0 0 161 88" style="position:absolute;left:0;top:0" aria-hidden="true"><path d="M146 40 A22 22 0 1 1 138 22 M146 12 V24 H134" fill="none" stroke="#fff" stroke-opacity=".30" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<div style="position:relative;display:flex;justify-content:space-between;align-items:center;height:24px;margin-top:-2px"><div style="font-size:14px;font-weight:600">Mises à jour</div></div>
+<div style="position:relative;display:flex;align-items:center;gap:6px;font-size:11.5px;color:rgba(235,235,245,.6)"><span style="width:6px;height:6px;border-radius:50%;background:#30D158"></span>À jour · 1.9.1</div>
+</div>
+</div>
+
+<!-- AirPods : même carte verte que sur la page principale, avec le boîtier -->
+<div style="font-size:11px;letter-spacing:.06em;color:rgba(235,235,245,.6);font-weight:600;margin:14px 6px 6px">AIRPODS</div>
+<div style="position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(48,209,88,.28),rgba(48,209,88,.08));border:1px solid rgba(48,209,88,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);border-radius:18px;padding:14px 14px 2px">
+<svg width="150" height="103" viewBox="0 0 76 52" style="position:absolute;right:-30px;top:-34px" aria-hidden="true"><rect x="3" y="4" width="70" height="46" rx="20" fill="rgba(255,255,255,.05)" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><path d="M3 24 L73 24" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><circle cx="38" cy="35" r="11" fill="#30D158" fill-opacity=".20"/><circle cx="38" cy="35" r="6" fill="#30D158" fill-opacity=".36"/><circle cx="38" cy="35" r="1.8" fill="#30D158"/></svg>
+<div style="position:relative;font-size:14px;font-weight:600">Gestion des AirPods</div>
+<div style="position:relative;display:flex;align-items:center;gap:6px;font-size:11.5px;color:#30D158;margin:2px 0 10px"><span style="width:6px;height:6px;border-radius:50%;background:#30D158;box-shadow:0 0 6px #30D158"></span>Activée</div>
+<div style="position:relative;height:1px;background:rgba(255,255,255,.10)"></div>
+<div style="position:relative;display:flex;align-items:center;height:40px"><span style="flex:1;font-size:13.5px">Appareil</span><span style="font-size:13px;color:rgba(235,235,245,.7)">AirPods Pro de Selim</span><span style="font-size:11px;color:rgba(235,235,245,.4);margin-left:6px">⌄</span></div>
+<div style="position:relative;height:1px;background:rgba(255,255,255,.10)"></div>
+<div style="position:relative;display:flex;align-items:center;height:40px"><span style="flex:1;font-size:13.5px">Proposer à l'ouverture du boîtier</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#30D158"><span style="width:6px;height:6px;border-radius:50%;background:#30D158;box-shadow:0 0 6px #30D158"></span>Activé</span></div>
+<div style="position:relative;height:1px;background:rgba(255,255,255,.10)"></div>
+<div style="position:relative;display:flex;align-items:center;height:40px"><span style="flex:1;font-size:13.5px">Aperçu de la fenêtre</span>
+<button aria-label="Afficher l'aperçu" style="width:26px;height:26px;border-radius:13px;border:0;background:rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;padding:0"><svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5 L10 6 L3 10.5 Z" fill="#fff"/></svg></button></div>
+</div>
+
+<!-- Avancé -->
+<div style="margin-top:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10);border-radius:18px;padding:0 16px;display:flex;align-items:center;height:46px">
+<span style="flex:1;font-size:14px;font-weight:600">Avancé</span><span style="font-size:12px;color:rgba(235,235,245,.5);margin-right:8px">Sortie, destination, Opus, diagnostics</span><span style="font-size:11px;color:rgba(235,235,245,.4)">⌄</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":360,"height":600}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

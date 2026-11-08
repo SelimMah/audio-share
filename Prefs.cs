@@ -65,6 +65,16 @@ internal static class Prefs
         set => SetString(TargetValue, value);
     }
 
+    /// <summary>
+    /// Dernier téléphone dont on a reçu le son : c'est lui que montre la
+    /// tuile principale quand plusieurs sont appairés.
+    /// </summary>
+    public static string? LastPhoneId
+    {
+        get => GetString("LastPhoneId");
+        set => SetString("LastPhoneId", value);
+    }
+
     // ---------- AirPods (ex-PodGate, voir AirPodsGate) ----------
 
     private const string AirPodsEnabledValue = "AirPodsEnabled";

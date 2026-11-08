@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Fenetre AirPods cliquable</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<!-- Faux bureau : le fond coloré laisse voir le flou acrylique de la fenêtre -->
+<div style="width:744px;height:300px;box-sizing:border-box;padding:16px 18px;background:radial-gradient(ellipse at 20% 15%,#3b5b9a 0%,rgba(59,91,154,0) 55%),radial-gradient(ellipse at 85% 80%,#6b3f7a 0%,rgba(107,63,122,0) 60%),linear-gradient(135deg,#142033,#1d2d3a);color:#fff;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;overflow:hidden;border-radius:12px">
+
+<div style="font-size:13px;font-weight:600;margin:0 2px 10px">Fenêtre AirPods cliquable : boîtier agrandi qui déborde, petite icône d'action (annuler, dissocier, réessayer), orange pour la connexion</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,336px);gap:4px 32px">
+
+<!-- ============ 1 · Proposition : toute la fenêtre est le bouton ============ -->
+<div><div style="font-size:11px;color:rgba(255,255,255,.7);margin:0 2px 4px">1 · Proposition (toucher la fenêtre pour connecter)</div>
+<div style="position:relative;overflow:hidden;width:336px;height:92px;box-sizing:border-box;border-radius:20px;background:rgba(38,41,48,.74);backdrop-filter:blur(28px);border:1px solid rgba(255,255,255,.14);box-shadow:0 14px 36px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12)">
+<svg width="150" height="103" viewBox="0 0 76 52" style="position:absolute;right:-30px;top:-28px" aria-hidden="true"><rect x="3" y="4" width="70" height="46" rx="20" fill="rgba(255,255,255,.05)" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><path d="M3 24 L73 24" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><circle cx="38" cy="35" r="11" fill="#fff" fill-opacity=".14"/><circle cx="38" cy="35" r="6" fill="#fff" fill-opacity=".26"/><circle cx="38" cy="35" r="1.8" fill="#fff"/></svg>
+<div style="position:absolute;left:16px;top:11px;font-size:15px;line-height:20px;font-weight:600">AirPods Pro</div>
+<div style="position:absolute;left:16px;top:32px;display:flex;align-items:center;gap:6px;font-size:12px;color:#7DBBFF"><span style="width:6px;height:6px;border-radius:50%;background:#4DA3FF;box-shadow:0 0 6px #4DA3FF"></span>Toucher pour connecter</div>
+<div style="position:absolute;left:16px;bottom:11px;display:flex;gap:10px;width:196px">
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.6)">G</span><span>100</span></div><div style="height:3px;border-radius:2px;background:rgba(255,255,255,.16);margin-top:3px"><div style="width:100%;height:3px;border-radius:2px;background:rgba(255,255,255,.88)"></div></div></div>
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.6)">D</span><span>100</span></div><div style="height:3px;border-radius:2px;background:rgba(255,255,255,.16);margin-top:3px"><div style="width:100%;height:3px;border-radius:2px;background:rgba(255,255,255,.88)"></div></div></div>
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.6)">B</span><span>80</span></div><div style="height:3px;border-radius:2px;background:rgba(255,255,255,.16);margin-top:3px"><div style="width:80%;height:3px;border-radius:2px;background:rgba(255,255,255,.88)"></div></div></div>
+</div>
+<button aria-label="Fermer" style="position:absolute;right:14px;top:11px;width:24px;height:24px;border-radius:12px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:10px">✕</button>
+</div></div>
+
+<!-- ============ 2 · Connexion en cours : orange ============ -->
+<div><div style="font-size:11px;color:rgba(255,255,255,.7);margin:0 2px 4px">2 · Connexion en cours (orange)</div>
+<div style="position:relative;overflow:hidden;width:336px;height:92px;box-sizing:border-box;border-radius:20px;background:rgba(38,41,48,.74);backdrop-filter:blur(28px);border:1px solid rgba(255,159,10,.55);box-shadow:0 14px 36px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12)">
+<div style="position:absolute;left:0;top:0;right:0;bottom:0;background:linear-gradient(160deg,rgba(255,159,10,.30),rgba(255,159,10,.06))"></div>
+<svg width="150" height="103" viewBox="0 0 76 52" style="position:absolute;right:-30px;top:-28px" aria-hidden="true"><rect x="3" y="4" width="70" height="46" rx="20" fill="rgba(255,255,255,.05)" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><path d="M3 24 L73 24" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><circle cx="38" cy="35" r="11" fill="#FF9F0A" fill-opacity=".20"/><circle cx="38" cy="35" r="6" fill="#FF9F0A" fill-opacity=".36"/><circle cx="38" cy="35" r="1.8" fill="#FF9F0A"/></svg>
+<div style="position:absolute;left:16px;top:11px;font-size:15px;line-height:20px;font-weight:600">AirPods Pro</div>
+<div style="position:absolute;left:16px;top:32px;display:flex;align-items:center;gap:7px;font-size:12px;color:#FFB340"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="rgba(255,179,64,.3)" stroke-width="1.6"/><path d="M6 1.4 A4.6 4.6 0 0 1 10.6 6" fill="none" stroke="#FFB340" stroke-width="1.6" stroke-linecap="round"/></svg>Connexion en cours…<button aria-label="Annuler" style="margin:-3px 0 -3px 6px;width:22px;height:22px;border-radius:11px;border:0;padding:0;background:rgba(0,0,0,.28);display:inline-flex;align-items:center;justify-content:center"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" rx="1.8" fill="#fff"/></svg></button></div>
+<div style="position:absolute;left:16px;bottom:11px;display:flex;gap:10px;width:196px;opacity:.55">
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.7)">G</span><span>100</span></div><div style="height:3px;border-radius:2px;background:rgba(0,0,0,.24);margin-top:3px"><div style="width:100%;height:3px;border-radius:2px;background:#fff"></div></div></div>
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.7)">D</span><span>100</span></div><div style="height:3px;border-radius:2px;background:rgba(0,0,0,.24);margin-top:3px"><div style="width:100%;height:3px;border-radius:2px;background:#fff"></div></div></div>
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.7)">B</span><span>80</span></div><div style="height:3px;border-radius:2px;background:rgba(0,0,0,.24);margin-top:3px"><div style="width:80%;height:3px;border-radius:2px;background:#fff"></div></div></div>
+</div>
+<button aria-label="Fermer" style="position:absolute;right:14px;top:11px;width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.25);color:#fff;font-size:10px">✕</button>
+</div></div>
+
+<!-- ============ 3 · Connectés : bouton Dissocier ============ -->
+<div><div style="font-size:11px;color:rgba(255,255,255,.7);margin:0 2px 4px">3 · Connectés (bouton Dissocier)</div>
+<div style="position:relative;overflow:hidden;width:336px;height:92px;box-sizing:border-box;border-radius:20px;background:rgba(38,41,48,.74);backdrop-filter:blur(28px);border:1px solid rgba(48,209,88,.5);box-shadow:0 14px 36px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12)">
+<div style="position:absolute;left:0;top:0;right:0;bottom:0;background:linear-gradient(160deg,rgba(48,209,88,.30),rgba(48,209,88,.06))"></div>
+<svg width="150" height="103" viewBox="0 0 76 52" style="position:absolute;right:-30px;top:-28px" aria-hidden="true"><rect x="3" y="4" width="70" height="46" rx="20" fill="rgba(255,255,255,.05)" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><path d="M3 24 L73 24" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><circle cx="38" cy="35" r="11" fill="#30D158" fill-opacity=".20"/><circle cx="38" cy="35" r="6" fill="#30D158" fill-opacity=".36"/><circle cx="38" cy="35" r="1.8" fill="#30D158"/></svg>
+<div style="position:absolute;left:16px;top:11px;font-size:15px;line-height:20px;font-weight:600">AirPods Pro</div>
+<div style="position:absolute;left:16px;top:32px;display:flex;align-items:center;gap:6px;font-size:12px;color:#30D158"><span style="width:6px;height:6px;border-radius:50%;background:#30D158;box-shadow:0 0 6px #30D158"></span>Connectés<button aria-label="Dissocier" style="margin:-3px 0 -3px 6px;width:22px;height:22px;border-radius:11px;border:0;padding:0;background:rgba(0,0,0,.28);display:inline-flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/><path d="M4 4 L20 20"/></svg></button></div>
+<div style="position:absolute;left:16px;bottom:11px;display:flex;gap:10px;width:196px">
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.7)">G</span><span>100</span></div><div style="height:3px;border-radius:2px;background:rgba(0,0,0,.24);margin-top:3px"><div style="width:100%;height:3px;border-radius:2px;background:#fff"></div></div></div>
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.7)">D</span><span>100</span></div><div style="height:3px;border-radius:2px;background:rgba(0,0,0,.24);margin-top:3px"><div style="width:100%;height:3px;border-radius:2px;background:#fff"></div></div></div>
+<div style="flex:1"><div style="display:flex;justify-content:space-between;font-size:11px;line-height:14px"><span style="color:rgba(235,235,245,.7)">B</span><span>80</span></div><div style="height:3px;border-radius:2px;background:rgba(0,0,0,.24);margin-top:3px"><div style="width:80%;height:3px;border-radius:2px;background:#fff"></div></div></div>
+</div>
+<button aria-label="Fermer" style="position:absolute;right:14px;top:11px;width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.25);color:#fff;font-size:10px">✕</button>
+</div></div>
+
+<!-- ============ 4 · Échec : bouton Réessayer ============ -->
+<div><div style="font-size:11px;color:rgba(255,255,255,.7);margin:0 2px 4px">4 · Échec (bouton Réessayer)</div>
+<div style="position:relative;overflow:hidden;width:336px;height:92px;box-sizing:border-box;border-radius:20px;background:rgba(38,41,48,.74);backdrop-filter:blur(28px);border:1px solid rgba(255,105,97,.5);box-shadow:0 14px 36px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12)">
+<div style="position:absolute;left:0;top:0;right:0;bottom:0;background:linear-gradient(160deg,rgba(255,105,97,.24),rgba(255,105,97,.04))"></div>
+<svg width="150" height="103" viewBox="0 0 76 52" style="position:absolute;right:-30px;top:-28px" aria-hidden="true"><rect x="3" y="4" width="70" height="46" rx="20" fill="rgba(255,255,255,.05)" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><path d="M3 24 L73 24" stroke="#fff" stroke-opacity=".30" stroke-width=".6"/><circle cx="38" cy="35" r="11" fill="#FF6961" fill-opacity=".20"/><circle cx="38" cy="35" r="6" fill="#FF6961" fill-opacity=".36"/><circle cx="38" cy="35" r="1.8" fill="#FF6961"/></svg>
+<div style="position:absolute;left:16px;top:11px;font-size:15px;line-height:20px;font-weight:600">AirPods Pro</div>
+<div style="position:absolute;left:16px;top:32px;display:flex;align-items:center;gap:6px;font-size:12px;color:#FF8A84"><span style="width:6px;height:6px;border-radius:50%;background:#FF6961;box-shadow:0 0 6px #FF6961"></span>Échec<button aria-label="Réessayer" style="margin:-3px 0 -3px 6px;width:22px;height:22px;border-radius:11px;border:0;padding:0;background:rgba(0,0,0,.28);display:inline-flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/></svg></button></div>
+<div style="position:absolute;left:16px;bottom:11px;width:196px;font-size:12px;line-height:16px;color:rgba(235,235,245,.75)">Sors-les du boîtier, puis réessaie.</div>
+<button aria-label="Fermer" style="position:absolute;right:14px;top:11px;width:24px;height:24px;border-radius:12px;border:0;background:rgba(0,0,0,.25);color:#fff;font-size:10px">✕</button>
+</div></div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":744,"height":300}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

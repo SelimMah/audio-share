@@ -11,6 +11,8 @@ using NAudio.Wave;
 
 namespace AudioShare;
 
+internal enum SendPhase { Off, Searching, Connecting, Streaming, Retrying }
+
 /// <summary>
 /// Émission : capture tout le son de ce PC (boucle WASAPI sur la sortie par
 /// défaut), le convertit en PCM 16 bits et l'envoie à un autre Duckast
@@ -47,6 +49,12 @@ internal sealed class NetworkSender : IDisposable
 
     public bool IsRunning => _cts is { IsCancellationRequested: false };
     public string State => _state;
+
+    /// <summary>Étape de l'émission, pour la tuile « Envoyer ».</summary>
+    public SendPhase Phase { get; private set; }
+
+    /// <summary>Récepteur visé ou joint (null pendant la recherche).</summary>
+    public string? PeerName { get; private set; }
     /// <summary>Un récepteur est joint et le flux part vers lui.</summary>
     public bool IsStreaming => IsRunning && _controlTarget != null;
 
@@ -144,9 +152,11 @@ internal sealed class NetworkSender : IDisposable
 
     // ---------- Boucle principale ----------
 
-    private void SetState(string state)
+    private void SetState(string state, SendPhase phase = SendPhase.Off, string? peer = null)
     {
         _state = state;
+        Phase = phase;
+        PeerName = peer;
         Changed?.Invoke();
     }
 
@@ -156,16 +166,16 @@ internal sealed class NetworkSender : IDisposable
         {
             try
             {
-                SetState(Loc.T("🔍 Looking for a receiver…", "🔍 Recherche d'un récepteur…"));
+                SetState(Loc.T("🔍 Looking for a receiver…", "🔍 Recherche d'un récepteur…"), SendPhase.Searching);
                 var (address, name) = await DiscoverAsync(ct);
-                SetState(Loc.T($"Connecting to “{name}”…", $"Connexion à « {name} »…"));
+                SetState(Loc.T($"Connecting to “{name}”…", $"Connexion à « {name} »…"), SendPhase.Connecting, name);
                 await StreamAsync(address, name, ct);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
             {
                 Log.Write($"Émission interrompue : {ex.Message}");
-                SetState(Loc.T("Connection lost — retrying…", "Connexion perdue — nouvel essai…"));
+                SetState(Loc.T("Connection lost — retrying…", "Connexion perdue — nouvel essai…"), SendPhase.Retrying);
                 try { await Task.Delay(2000, ct); } catch { return; }
             }
         }
@@ -456,7 +466,7 @@ internal sealed class NetworkSender : IDisposable
             capture.RecordingStopped += (_, _) => done.TrySetResult();
 
             capture.StartRecording();
-            SetState(Loc.T($"🎵 Streaming to “{receiverName}”", $"🎵 Diffusion vers « {receiverName} »"));
+            SetState(Loc.T($"🎵 Streaming to “{receiverName}”", $"🎵 Diffusion vers « {receiverName} »"), SendPhase.Streaming, receiverName);
 
             await using (ct.Register(() =>
             {

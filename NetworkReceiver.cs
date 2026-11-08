@@ -166,6 +166,62 @@ internal sealed class NetworkReceiver : IDisposable
     public string? SenderName => _senderName;
     public bool IsReceiving => _senderName != null;
 
+    // ✕ de la tuile « Réseau local » : l'émetteur en cours est écarté. Il
+    // réessaie de lui-même (sondes toutes les ~2 s) : on ne lui répond plus
+    // et on refuse ses connexions, jusqu'à la reprise — ou jusqu'à ce qu'il
+    // se taise (il a arrêté d'émettre), pour ne pas le bouder indéfiniment.
+    private static readonly TimeSpan PauseForgetAfter = TimeSpan.FromSeconds(15);
+    private volatile string? _pausedName;
+    private IPAddress? _pausedAddress;
+    private long _pausedSeenAt;
+    private TcpClient? _client;
+
+    /// <summary>Émetteur écarté par l'utilisateur (null = aucun).</summary>
+    public string? PausedSender => _pausedName;
+
+    /// <summary>Coupe le flux en cours et écarte son émetteur.</summary>
+    public void PauseCurrentSender()
+    {
+        var name = _senderName;
+        if (name == null) return;
+        _pausedName = name;
+        _pausedAddress = _senderAddress;
+        Interlocked.Exchange(ref _pausedSeenAt, Environment.TickCount64);
+        Log.Write($"Réseau : flux de « {name} » mis en pause");
+        try { _client?.Close(); } catch { }
+        Changed?.Invoke();
+    }
+
+    /// <summary>Accepte de nouveau l'émetteur écarté.</summary>
+    public void ResumeSender()
+    {
+        if (_pausedName == null) return;
+        Log.Write($"Réseau : reprise de « {_pausedName} »");
+        _pausedName = null;
+        _pausedAddress = null;
+        Changed?.Invoke();
+    }
+
+    /// <summary>À appeler régulièrement : oublie la pause d'un émetteur qui s'est tu.</summary>
+    public void ExpirePause()
+    {
+        if (_pausedName == null) return;
+        if (Environment.TickCount64 - Interlocked.Read(ref _pausedSeenAt) < PauseForgetAfter.TotalMilliseconds) return;
+        Log.Write($"Réseau : « {_pausedName} » ne se manifeste plus — pause oubliée");
+        _pausedName = null;
+        _pausedAddress = null;
+        Changed?.Invoke();
+    }
+
+    private bool IsPausedPeer(IPAddress? address, string? name)
+    {
+        if (_pausedName == null) return false;
+        bool match = (name != null && string.Equals(name, _pausedName, StringComparison.OrdinalIgnoreCase))
+                     || (address != null && _pausedAddress != null && address.Equals(_pausedAddress));
+        if (match) Interlocked.Exchange(ref _pausedSeenAt, Environment.TickCount64);
+        return match;
+    }
+
     /// <summary>Latence actuelle du tampon (ms), pour affichage.</summary>
     public int? LatencyMs => IsReceiving && _buffer is { } b
         ? (int)b.BufferedDuration.TotalMilliseconds : null;
@@ -230,6 +286,7 @@ internal sealed class NetworkReceiver : IDisposable
 
                 if (text == "ASHARE?")
                 {
+                    if (IsPausedPeer(request.RemoteEndPoint.Address, null)) continue;
                     var reply = Encoding.UTF8.GetBytes("ASHARE!" + Environment.MachineName);
                     await _udp.SendAsync(reply, request.RemoteEndPoint, ct);
                 }
@@ -281,7 +338,6 @@ internal sealed class NetworkReceiver : IDisposable
 
     private async Task HandleClientAsync(TcpClient client, CancellationToken ct)
     {
-        StopPlayback(); // un seul émetteur à la fois : le dernier arrivé gagne
         try
         {
             using var _ = client;
@@ -301,8 +357,17 @@ internal sealed class NetworkReceiver : IDisposable
             int nameLength = BitConverter.ToInt16(header, 0);
             var nameBuffer = new byte[nameLength];
             await ReadExactAsync(stream, nameBuffer, nameLength, ct);
-            _senderName = Encoding.UTF8.GetString(nameBuffer);
-            _senderAddress = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
+            var name = Encoding.UTF8.GetString(nameBuffer);
+            var address = (client.Client.RemoteEndPoint as IPEndPoint)?.Address;
+            if (IsPausedPeer(address, name)) return;
+            // Un seul émetteur à la fois : le dernier arrivé gagne, l'ancien
+            // flux est fermé (sa boucle de lecture s'arrête d'elle-même).
+            var previous = _client;
+            _client = client;
+            if (previous != null) try { previous.Close(); } catch { }
+            StopPlayback();
+            _senderName = name;
+            _senderAddress = address;
             Log.Write($"Réseau : émetteur « {_senderName} » connecté "
                       + $"({rate} Hz, {channels} canaux, {bits} bits, {(isOpus ? "Opus" : "PCM")})");
 
@@ -408,10 +473,16 @@ internal sealed class NetworkReceiver : IDisposable
         catch (Exception ex) { Log.Write($"Réseau (flux) : {ex.Message}"); }
         finally
         {
-            _senderName = null;
-            _senderAddress = null;
-            StopPlayback();
-            Changed?.Invoke();
+            // Un émetteur écarté qui retente ne doit pas couper le flux en
+            // cours d'un autre : on ne nettoie que ce qui est à nous.
+            if (_client == client)
+            {
+                _client = null;
+                _senderName = null;
+                _senderAddress = null;
+                StopPlayback();
+                Changed?.Invoke();
+            }
         }
     }
 

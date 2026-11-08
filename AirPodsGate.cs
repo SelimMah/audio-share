@@ -89,6 +89,7 @@ internal sealed class AirPodsGate : IDisposable
     private bool _servicesEnabled;      // services audio cochés (= « déverrouillé »)
     private bool _connected;            // lien Bluetooth établi avec les AirPods
     private bool _busy;                 // modification des services en cours
+    private bool _busyEnabling;         // … dans le sens « autoriser l'audio »
 
     private bool _present;              // annonces BLE reçues récemment
     private bool _promptSuppressed;     // proposition refusée : pas de nouvelle avant qu'ils soient rangés
@@ -507,8 +508,8 @@ internal sealed class AirPodsGate : IDisposable
                 _awaitUntil = null;
                 Log.Write("AirPods : Windows ne s'est pas connecté dans le délai — reverrouillage");
                 if (_awaitShowsProgress)
-                    ShowMessage(Loc.T("Couldn't connect. Make sure they're out of the case, then try again.",
-                                      "Connexion impossible. Vérifie qu'ils sont sortis du boîtier, puis réessaie."), AirPodsMessageKind.Error, 6000);
+                    ShowMessage(Loc.T("Take them out of the case, then try again.",
+                                      "Sors-les du boîtier, puis réessaie."), AirPodsMessageKind.Error, 8000);
                 Fire(() => SetServicesAsync(false, "échec de connexion"), "Verrouillage");
             }
         }
@@ -760,14 +761,36 @@ internal sealed class AirPodsGate : IDisposable
         if (!await SetServicesAsync(true, reason))
         {
             if (showProgress)
-                ShowMessage(Loc.T("Failed: Bluetooth audio couldn't be enabled (details in the log).",
-                                  "Échec : l'audio Bluetooth n'a pas pu être activé (détails dans le journal)."), AirPodsMessageKind.Error, 6000);
+                ShowMessage(Loc.T("Bluetooth audio couldn't be enabled (see the log).",
+                                  "L'audio Bluetooth n'a pas pu être activé (voir le journal)."), AirPodsMessageKind.Error, 8000);
             return;
         }
         // Windows se connecte de lui-même dès que les services sont cochés ; Poll() suit la suite.
         _awaitUntil = DateTime.Now + ConnectTimeout;
         _awaitShowsProgress = showProgress;
     }
+
+    /// <summary>
+    /// ■ de la fenêtre « Connexion en cours… » : on cesse d'attendre Windows
+    /// et on reverrouille. Sans effet pendant la bascule des services elle-même.
+    /// </summary>
+    public async Task CancelConnectAsync()
+    {
+        if (!_running || _device == null || _busy) return;
+        _awaitUntil = null;
+        WithdrawPrompt();
+        if (await SetServicesAsync(false, "connexion annulée"))
+        {
+            _promptSuppressed = true;
+            ShowMessage(Loc.T("Connection cancelled.", "Connexion annulée."), AirPodsMessageKind.Info, 2500);
+        }
+    }
+
+    /// <summary>Bascule des services en cours (rien ne peut l'interrompre).</summary>
+    public bool IsBusy => _busy;
+
+    /// <summary>Une connexion est en cours : bascule des services, ou attente que Windows se connecte.</summary>
+    public bool IsConnecting => _running && (_busy ? _busyEnabling : _servicesEnabled && !_connected);
 
     /// <summary>« Déconnecter » : décoche les services, Windows ne s'y reconnectera pas seul.</summary>
     public async Task DisconnectAsync()
@@ -791,6 +814,7 @@ internal sealed class AirPodsGate : IDisposable
         if (device == null) return false;
 
         _busy = true;
+        _busyEnabling = enable;
         RaiseChanged();
         try
         {
