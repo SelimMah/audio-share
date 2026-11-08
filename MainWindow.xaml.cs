@@ -175,6 +175,7 @@ public partial class MainWindow : Window
         _airPods.PromptRequested += OnAirPodsPrompt;
         _airPods.PromptWithdrawn += OnAirPodsPromptWithdrawn;
         _airPods.MessageRequested += OnAirPodsMessage;
+        _airPods.StatusPeekRequested += OnAirPodsStatusPeek;
         _airPods.Start();
 
         // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
@@ -1548,6 +1549,13 @@ public partial class MainWindow : Window
     }
 
     private void OnAirPodsPrompt(AirPodsPrompt prompt) => _airPodsPopup.ShowPrompt(prompt);
+
+    /// <summary>Boîtier ouvert, AirPods déjà connectés : batteries pendant quelques secondes.</summary>
+    private void OnAirPodsStatusPeek()
+    {
+        if (!AirPodsPopupAvailable || (IsVisible && !_hiding)) return;
+        _airPodsPopup.ShowLive(FillAirPodsView, 8000);
+    }
 
     private void OnAirPodsPromptWithdrawn()
     {

@@ -117,13 +117,13 @@ internal sealed partial class AirPodsPopup : Window
     /// que la carte de la page principale). Reste ouverte jusqu'à un clic à
     /// l'extérieur ; jamais compté comme un refus.
     /// </summary>
-    public void ShowLive(Action<AirPodsView> fill)
+    public void ShowLive(Action<AirPodsView> fill, int autoCloseMs = 0)
     {
         _isPrompt = false;
         _isPreview = false;
         _isLive = true;
         fill(View);
-        ShowCore(0);
+        ShowCore(autoCloseMs);
     }
 
     /// <summary>Batterie mise à jour en direct pendant une proposition.</summary>

@@ -97,6 +97,8 @@ internal sealed class AirPodsGate : IDisposable
     private DateTime _lastPromptAt = DateTime.MinValue;
     private AirPodsAdvert? _lastAdvert;
     private readonly Dictionary<ushort, int> _modelVotes = new();
+    // Dernier état du couvercle vu, par écouteur émetteur (true = gauche/droite selon le bit 0x20).
+    private readonly Dictionary<bool, (bool Closed, int Count)> _lastLid = new();
 
     private DateTime? _disconnectedSince;
     private DateTime? _awaitUntil;      // on attend que Windows se connecte après déverrouillage
@@ -112,6 +114,8 @@ internal sealed class AirPodsGate : IDisposable
     public event Action? PromptWithdrawn;
     /// <summary>Afficher un message d'état (remplace la proposition s'il y en a une).</summary>
     public event Action<AirPodsMessage>? MessageRequested;
+    /// <summary>Ouverture du boîtier alors qu'ils sont déjà connectés : afficher l'état (batteries) un moment.</summary>
+    public event Action? StatusPeekRequested;
     /// <summary>Notification système (bulle de la zone de notification).</summary>
     public event Action<string, string>? NotifyRequested;
 
@@ -317,6 +321,7 @@ internal sealed class AirPodsGate : IDisposable
         _lastAdvert = null;
         _loggedState = null;
         _modelVotes.Clear();
+        _lastLid.Clear();
 
         if (_ownership != null)
         {
@@ -589,6 +594,17 @@ internal sealed class AirPodsGate : IDisposable
         // rangeant les AirPods). Seul le passage « rangés → disponibles »
         // relance une proposition.
 
+        // Ouverture du couvercle : détectée PAR écouteur émetteur (bit 0x20 de
+        // l'état), car chacun a son propre compteur. Comparer des annonces de
+        // deux écouteurs différents donnait de fausses ouvertures ; comparer
+        // un écouteur à lui-même est fiable (fermé→ouvert, ou compteur changé).
+        bool emitter = (advert.RawStatus & 0x20) != 0;
+        bool lidJustOpened = false;
+        if (_lastLid.TryGetValue(emitter, out var prev) && !advert.LidClosed &&
+            (prev.Closed || prev.Count != advert.LidOpenCount))
+            lidJustOpened = true;
+        _lastLid[emitter] = (advert.LidClosed, advert.LidOpenCount);
+
         // Rangés (boîtier fermé, écouteurs dedans) : ils émettent encore, mais
         // ne sont pas disponibles. Une annonce isolée ne suffit pas (les deux
         // écouteurs émettent en alternance) : il faut que plus rien ne dise
@@ -604,6 +620,14 @@ internal sealed class AirPodsGate : IDisposable
         _lastAdvertAt = now;
         if (_present)
         {
+            if (lidJustOpened)
+            {
+                // Réouverture alors qu'ils étaient encore tenus pour présents
+                // (fermé puis rouvert vite) : on repropose tout de suite.
+                Log.Write("AirPods : couvercle rouvert — nouvelle proposition");
+                _promptSuppressed = false;
+                MaybePrompt(force: true);
+            }
             if (batteryChanged) RaiseChanged();
             return;
         }
@@ -641,11 +665,24 @@ internal sealed class AirPodsGate : IDisposable
                   $"(état 0x{advert.RawStatus:X2}, couvercle 0x{advert.RawLid:X2}, {advert.Rssi} dBm)");
     }
 
-    private void MaybePrompt()
+    private void MaybePrompt(bool force = false)
     {
         if (!Prefs.AirPodsPrompt || _device == null || _busy || _awaitUntil != null) return;
-        if (_servicesEnabled && _connected) return;
-        if (_promptSuppressed || DateTime.Now - _lastPromptAt < PromptCooldown) return;
+        if (_promptShown) return;
+        // Une ouverture explicite du couvercle passe outre le délai anti-rafale
+        // (gardé court pour ne pas doubler la proposition).
+        var cooldown = force ? TimeSpan.FromSeconds(1) : PromptCooldown;
+        if (_promptSuppressed || DateTime.Now - _lastPromptAt < cooldown) return;
+
+        if (_servicesEnabled && _connected)
+        {
+            // Déjà connectés : pas de bouton « Connecter », mais on montre la
+            // batterie à chaque ouverture du boîtier.
+            _lastPromptAt = DateTime.Now;
+            Log.Write("AirPods : déjà connectés — affichage de la batterie");
+            StatusPeekRequested?.Invoke();
+            return;
+        }
         ShowPrompt();
     }
 
