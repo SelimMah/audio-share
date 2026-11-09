@@ -58,9 +58,10 @@ Anatomie, identique pour les 4 tuiles :
 - **Haut gauche : le nom** (14, semi-bold). Il est TOUJOURS au-dessus du statut.
 - **Haut droite : bouton ✕ rond 24 px** (fond #40000000, glyphe 10), seulement
   s'il y a quelque chose à arrêter / déconnecter.
-- **Bas : le statut** = point 6 px (avec lueur `0 0 6px` de sa couleur quand
-  actif) + texte 11,5 ; puis éventuellement une ligne de détail 12 en
-  `LabelSecondary`.
+- **Sous le nom : le statut** = point 6 px (avec lueur `0 0 6px` de sa couleur
+  quand actif) + texte 11,5.
+- **Bas : éventuellement une ligne de détail** 12 en `LabelSecondary`, puis le
+  pied (batteries, sélecteur…).
 - **Fond : illustration au trait** (voir plus bas), qui déborde à droite.
 
 États de fond (bordure 1 px, reflet intérieur `0 1px 0 #1AFFFFFF`) :
@@ -155,7 +156,7 @@ En-tête : logo + « Réglages », engrenage allumé (fond #38FFFFFF). Même hau
 que la page principale.
 
 - **GÉNÉRAL** : tuiles 161 × **88** (padding 12/14), mêmes règles que ci-dessus
-  (nom en haut, statut en bas, vert si activé, pas d'interrupteur) :
+  (nom en haut, statut juste dessous, vert si activé, pas d'interrupteur) :
   *Lancer avec Windows* (« Activé »), *Mode sombre* (« Désactivé »),
   *Langue* (sélecteur English | Français de 26 px dedans),
   *Mises à jour* (« À jour · 1.9.1 », un toucher lance la vérification ;

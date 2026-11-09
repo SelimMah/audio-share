@@ -544,9 +544,11 @@ internal sealed class Tile : Grid
         };
         _close.LostMouseCapture += (_, _) => _closePressed = false;
 
-        var top = new Grid { MinHeight = 24 };
-        top.Children.Add(_title);
-        top.Children.Add(_close);
+        // Le ✕ a sa propre colonne : titre et statut s'arrêtent avant lui.
+        _close.Margin = new Thickness(6, 0, 0, 0);
+        _close.VerticalAlignment = VerticalAlignment.Top;
+        var titleBox = new Grid { MinHeight = 24 };
+        titleBox.Children.Add(_title);
 
         // Point du statut : lueur radiale derrière (pas d'Effect).
         var glow = new RadialGradientBrush { GradientStops = { _glowCore, _glowEdge } };
@@ -570,8 +572,18 @@ internal sealed class Tile : Grid
             Visibility = Visibility.Collapsed,
         };
 
+        // Statut juste sous le titre ; détail et pied restent en bas.
+        var heading = new StackPanel();
+        heading.Children.Add(titleBox);
+        heading.Children.Add(_statusRow);
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        top.Children.Add(heading);
+        SetColumn(_close, 1);
+        top.Children.Add(_close);
+
         var bottom = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom };
-        bottom.Children.Add(_statusRow);
         bottom.Children.Add(_detail);
         bottom.Children.Add(_footerHost);
 
