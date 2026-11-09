@@ -164,12 +164,15 @@ que la page principale.
   Illustrations : symbole d'alimentation, croissant de lune, globe, flèche
   circulaire — **les tracés les plus simples** (voir le fichier, c'est ceux
   que Selim a validés ; ne pas ajouter de détails).
-- **AIRPODS** : une carte verte (comme une tuile active, boîtier en filigrane
+- **AIRPODS** : une carte rose quand active (couleur des AirPods dans toute
+  l'app, demandé par Selim le 9/11/2026 ; boîtier en filigrane
   qui déborde en haut à droite) : titre « Gestion des AirPods » + « ● Activée »,
   puis lignes séparées par un filet : *Appareil* (valeur + chevron, liste),
   *Proposer à l'ouverture du boîtier* (« ● Activé » en vert, un toucher sur la
   ligne bascule — **pas d'interrupteur**), *Aperçu de la fenêtre* (bouton rond
-  ▶ de 26 px). `AirPodsHint` est à replacer sous la carte.
+  ▶ de 26 px). `AirPodsHint` est à replacer sous la carte. Chaque ligne
+  s'éclaire seule au survol (style `SettingRow`, toute la ligne agit) et la
+  carte ne s'éclaire que sur son en-tête (`Tile.FooterIsSeparate`).
 - **AVANCÉ** : une ligne repliée avec un résumé (« Sortie, destination, Opus,
   diagnostics ») et un chevron ; se déplie sur place comme aujourd'hui
   (`AdvancedHost`).

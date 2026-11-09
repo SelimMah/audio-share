@@ -90,23 +90,51 @@ public partial class MainWindow : Window
         // registre et détourneraient encore du son. On nettoie au démarrage.
         PurgeStaleCablePins();
 
-        // Tactile : en butée de défilement, WPF fait « rebondir » toute la
-        // fenêtre — on garde le panneau immobile.
+        // Tactile : en butée de défilement (et sur l'accueil, qui n'a rien à
+        // faire défiler), WPF fait suivre le doigt à toute la fenêtre. Traité
+        // dans PageScroll même, à la source : sur la fenêtre, c'était trop tard.
+        PageScroll.ManipulationBoundaryFeedback += (_, e) => e.Handled = true;
         ManipulationBoundaryFeedback += (_, e) => e.Handled = true;
-        // Un geste qui commence sur un curseur (volume…) le pilote : pas de
-        // défilement, le toucher redevient un clic-glisser.
+        // Un geste qui commence sur un curseur (volume…) le pilote, pas le
+        // défilement. La source de l'événement est toujours PageScroll : il
+        // faut regarder ce qui est sous le doigt.
         PageScroll.ManipulationStarting += (_, e) =>
         {
-            for (var d = e.OriginalSource as DependencyObject; d != null && d != PageScroll;
-                 d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            foreach (var m in e.Manipulators)
             {
-                if (d is System.Windows.Controls.Primitives.RangeBase)
+                if (m is not TouchDevice touch) continue;
+                var under = (touch.Captured ?? touch.DirectlyOver) as DependencyObject;
+                for (var d = under; d != null && d != PageScroll;
+                     d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
                 {
-                    e.Cancel();
-                    return;
+                    if (d is System.Windows.Controls.Primitives.RangeBase)
+                    {
+                        e.Cancel();
+                        return;
+                    }
                 }
             }
         };
+        // Pas de flèche de souris pendant un geste au doigt : quand WPF
+        // convertit un toucher en souris (glissé qui n'est pas un défilement,
+        // simple tape), il réaffiche le curseur. Il revient au premier vrai
+        // mouvement de souris — pas sur les mouvements que WPF simule quand
+        // la mise en page change sous le pointeur (position inchangée).
+        PreviewTouchDown += (_, _) => _touchInput = true;
+        PreviewMouseMove += (_, e) =>
+        {
+            var at = e.GetPosition(this);
+            if (e.StylusDevice == null && (at - _lastMouseAt).Length > 2) _touchInput = false;
+            _lastMouseAt = at;
+        };
+        // Les éléments choisissent leur curseur en remontant ; la fenêtre
+        // passe en dernier (y compris déjà traité) et a le dernier mot.
+        AddHandler(Mouse.QueryCursorEvent, new QueryCursorEventHandler((_, e) =>
+        {
+            if (!_touchInput && e.StylusDevice == null) return;
+            e.Cursor = System.Windows.Input.Cursors.None;
+            e.Handled = true;
+        }), handledEventsToo: true);
 
         WireTiles();
 
@@ -264,11 +292,42 @@ public partial class MainWindow : Window
     /// Toute la ligne d'un interrupteur le bascule, pas seulement la pastille
     /// (un clic sur l'interrupteur lui-même ne remonte pas jusqu'ici).
     /// </summary>
-    private void ToggleRow_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    /// <summary>
+    /// Clic n'importe où sur une ligne de réglage (SettingRow) : même effet
+    /// que sur son contrôle. Les listes s'ouvrent à l'appui, comme leur propre
+    /// bouton (au relâchement, le clic qui vient de FERMER la liste la
+    /// rouvrirait) ; bascules et boutons agissent au relâchement. Un clic sur
+    /// le contrôle lui-même est déjà traité par lui.
+    /// </summary>
+    private void SettingRow_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (sender is not System.Windows.Controls.Panel row) return;
-        var toggle = row.Children.OfType<System.Windows.Controls.CheckBox>().FirstOrDefault();
-        if (toggle is { IsEnabled: true }) toggle.IsChecked = toggle.IsChecked != true;
+        if (sender is not System.Windows.Controls.ContentControl { Content: System.Windows.Controls.Panel row }) return;
+        bool down = e.RoutedEvent == MouseLeftButtonDownEvent;
+        foreach (var child in row.Children.OfType<UIElement>())
+        {
+            if (!child.IsEnabled || IsWithin(e.OriginalSource as DependencyObject, child)) continue;
+            switch (child)
+            {
+                case System.Windows.Controls.ComboBox combo when down:
+                    combo.IsDropDownOpen = true;
+                    e.Handled = true;
+                    return;
+                case System.Windows.Controls.CheckBox toggle when !down:
+                    toggle.IsChecked = toggle.IsChecked != true;
+                    return;
+                case System.Windows.Controls.Primitives.ButtonBase button when !down:
+                    button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                    return;
+            }
+        }
+    }
+
+    private static bool IsWithin(DependencyObject? d, DependencyObject ancestor)
+    {
+        for (; d != null; d = d is Visual or System.Windows.Media.Media3D.Visual3D
+                 ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d == ancestor) return true;
+        return false;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -1203,6 +1262,8 @@ public partial class MainWindow : Window
         : null;
 
     private VuAurora? _aurora;
+    private bool _touchInput; // dernier geste au doigt : curseur masqué
+    private System.Windows.Point _lastMouseAt;
     private TimeSpan? _vuLastFrame;
 
     /// <summary>
@@ -1731,7 +1792,9 @@ public partial class MainWindow : Window
             if (!_airPodsToggling)
             {
                 bool on = _airPods.IsEnabled;
-                AirPodsSettingsTile.SetState(on ? TileTint.Green : TileTint.Glass,
+                // Rose = la couleur des AirPods partout dans l'app (tuile
+                // « Connectés », lueur du vumètre) — pas le vert générique.
+                AirPodsSettingsTile.SetState(on ? TileTint.Rose : TileTint.Glass,
                     _airPods.IsOwnedElsewhere ? Loc.T("Managed by another Duckast", "Gérée par un autre Duckast")
                     : on ? Loc.T("On", "Activée") : Loc.T("Off", "Désactivée"));
             }

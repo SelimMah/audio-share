@@ -1,4 +1,4 @@
-<Window x:Class="AudioShare.MainWindow"
+﻿<Window x:Class="AudioShare.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
@@ -99,14 +99,18 @@
                          en-tête active / désactive la gestion. Les options se
                          déplient dessous quand elle est active. -->
                     <TextBlock x:Name="AirPodsSettingsHeader" Text="AIRPODS" Style="{StaticResource SectionHeader}"/>
-                    <local:Tile x:Name="AirPodsSettingsTile" Art="CaseCorner" Breathe="False"
+                    <local:Tile x:Name="AirPodsSettingsTile" Art="CaseCorner" Breathe="False" FooterIsSeparate="True"
                                 ContentPadding="14,14,14,2">
                         <local:Tile.Footer>
+                            <!-- Élargi de 8 px de chaque côté : la place de la
+                                 surbrillance des lignes (SettingRow), sinon rognée. -->
                             <Border x:Name="AirPodsOptionsHost" Height="0" Opacity="0" ClipToBounds="True"
-                                    IsHitTestVisible="False">
-                                <StackPanel x:Name="AirPodsOptions" VerticalAlignment="Top" Margin="0,10,0,0">
+                                    IsHitTestVisible="False" Margin="-8,0">
+                                <StackPanel x:Name="AirPodsOptions" VerticalAlignment="Top" Margin="8,10,8,0">
                                     <Border Height="1" Background="{StaticResource Separator}"/>
-                                    <Grid Height="40" Cursor="Hand" Background="#00FFFFFF">
+                                    <ContentControl Style="{StaticResource SettingRow}"
+                                                    MouseLeftButtonDown="SettingRow_Click">
+                                    <Grid Height="40">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
@@ -119,16 +123,21 @@
                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   SelectionChanged="AirPodsDevice_Changed"/>
                                     </Grid>
+                                    </ContentControl>
                                     <Border Height="1" Background="{StaticResource Separator}"/>
-                                    <Grid Height="40" Background="#00FFFFFF" Cursor="Hand"
-                                          MouseLeftButtonUp="ToggleRow_Click">
+                                    <ContentControl Style="{StaticResource SettingRow}"
+                                                    MouseLeftButtonUp="SettingRow_Click">
+                                    <Grid Height="40">
                                         <TextBlock x:Name="AirPodsPromptLabel" Text="Offer when the case opens"
                                                    Style="{StaticResource CardRowLabel}" Margin="0,0,90,0"/>
                                         <CheckBox x:Name="AirPodsPromptToggle" Style="{StaticResource DotToggle}"
                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   Checked="AirPodsPrompt_Changed" Unchecked="AirPodsPrompt_Changed"/>
                                     </Grid>
+                                    </ContentControl>
                                     <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <ContentControl Style="{StaticResource SettingRow}"
+                                                    MouseLeftButtonUp="SettingRow_Click">
                                     <Grid Height="40">
                                         <TextBlock x:Name="AirPodsPreviewLabel" Text="Window preview"
                                                    Style="{StaticResource CardRowLabel}"/>
@@ -139,6 +148,7 @@
                                                   Stretch="None" Margin="1,0,0,0"/>
                                         </Button>
                                     </Grid>
+                                    </ContentControl>
                                 </StackPanel>
                             </Border>
                         </local:Tile.Footer>
@@ -168,6 +178,8 @@
                                     ClipToBounds="True" IsHitTestVisible="False">
                                 <StackPanel x:Name="AdvancedContent" VerticalAlignment="Top" Margin="16,0,16,4">
                                     <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <ContentControl Style="{StaticResource SettingRow}"
+                                                    MouseLeftButtonDown="SettingRow_Click">
                                     <Grid x:Name="OutputRow" Height="40">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -181,7 +193,10 @@
                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   SelectionChanged="Output_Changed"/>
                                     </Grid>
+                                    </ContentControl>
                                     <Border Height="1" Background="{StaticResource Separator}"/>
+                                    <ContentControl Style="{StaticResource SettingRow}"
+                                                    MouseLeftButtonDown="SettingRow_Click">
                                     <Grid x:Name="DestRow" Height="40">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
@@ -195,15 +210,18 @@
                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   SelectionChanged="Dest_Changed"/>
                                     </Grid>
+                                    </ContentControl>
                                     <Border Height="1" Background="{StaticResource Separator}"/>
-                                    <Grid x:Name="OpusRow" Height="40" Background="#00FFFFFF" Cursor="Hand"
-                                          MouseLeftButtonUp="ToggleRow_Click">
+                                    <ContentControl Style="{StaticResource SettingRow}"
+                                                    MouseLeftButtonUp="SettingRow_Click">
+                                    <Grid x:Name="OpusRow" Height="40">
                                         <TextBlock x:Name="OpusLabel" Text="Opus compression (Wi-Fi)"
                                                    Style="{StaticResource CardRowLabel}" Margin="0,0,90,0"/>
                                         <CheckBox x:Name="OpusToggle" Style="{StaticResource DotToggle}"
                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   Checked="Opus_Changed" Unchecked="Opus_Changed"/>
                                     </Grid>
+                                    </ContentControl>
                                     <Border Height="1" Background="{StaticResource Separator}"/>
                                     <Button x:Name="DiagNavButton" Style="{StaticResource NavRow}" Height="40"
                                             Margin="-10,0" Click="DiagNav_Click">

@@ -56,6 +56,45 @@
         <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
     </Style>
 
+    <!-- Ligne de réglage dans une carte (AirPods, Avancé) : s'éclaire seule
+         au survol, pour qu'on voie qu'on touche CETTE option et pas la carte
+         entière. La surbrillance déborde de 8 px du texte : le conteneur
+         doit laisser cette place (pas de rognage au ras des lignes). -->
+    <Style x:Key="SettingRow" TargetType="ContentControl">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContentControl">
+                    <Grid Background="#00FFFFFF">
+                        <Border x:Name="Hover" CornerRadius="9" Margin="-8,3" Background="#14FFFFFF" Opacity="0"/>
+                        <ContentPresenter/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Hover" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="0:0:0.14"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Hover" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="0:0:0.28"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Bouton rond de l'en-tête (engrenage) : le fond est animé en code
          (allumé dans les Réglages), d'où le TemplateBinding. -->
     <Style x:Key="HeaderButton" TargetType="Button">

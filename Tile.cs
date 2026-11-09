@@ -664,7 +664,7 @@ internal sealed class Tile : Grid
         {
             _clickable = value;
             Cursor = value ? Cursors.Hand : null;
-            if (!value) Palette.Fade(_hover, 0, 200);
+            if (!value) SetHover(false);
         }
     }
 
@@ -679,6 +679,24 @@ internal sealed class Tile : Grid
         get => _footerHost.Child;
         set => _footerHost.Child = value;
     }
+
+    /// <summary>
+    /// Vrai : le pied contient ses propres options (carte AirPods des
+    /// Réglages). Tout le bandeau du pied sort alors de la tuile : ni survol,
+    /// ni pression, ni clic de la tuile, pointeur normal — seules ses lignes
+    /// réagissent, on voit ce qu'on va toucher.
+    /// </summary>
+    public bool FooterIsSeparate
+    {
+        get => _footerSeparate;
+        set
+        {
+            _footerSeparate = value;
+            _footerHost.Cursor = value ? Cursors.Arrow : null;
+        }
+    }
+
+    private bool _footerSeparate;
 
     public TileTint Tint => _tint;
 
@@ -829,25 +847,47 @@ internal sealed class Tile : Grid
         return false;
     }
 
+    /// <summary>Le point (repère de la tuile) est-il dans le bandeau d'un pied séparé ?</summary>
+    private bool OverSeparateFooter(Point p)
+    {
+        if (!_footerSeparate || _footerHost.ActualHeight < 1) return false;
+        double top = _footerHost.TranslatePoint(new Point(0, 0), this).Y;
+        return p.Y >= top;
+    }
+
+    private bool _hovered;
+
+    private void SetHover(bool on)
+    {
+        if (on == _hovered) return;
+        _hovered = on;
+        Palette.Fade(_hover, on ? 1 : 0, on ? 140 : 280);
+        if (!_pressed) Palette.ScaleTo(_press, on ? 1.012 : 1, on ? 220 : 280, Palette.Out);
+    }
+
     protected override void OnMouseEnter(MouseEventArgs e)
     {
         base.OnMouseEnter(e);
-        if (!Clickable) return;
-        Palette.Fade(_hover, 1, 140);
-        if (!_pressed) Palette.ScaleTo(_press, 1.012, 220, Palette.Out);
+        SetHover(Clickable && !OverSeparateFooter(e.GetPosition(this)));
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (_footerSeparate) SetHover(Clickable && !OverSeparateFooter(e.GetPosition(this)));
     }
 
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
-        Palette.Fade(_hover, 0, 280);
-        if (!_pressed) Palette.ScaleTo(_press, 1, 280, Palette.Out);
+        SetHover(false);
     }
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        if (e.Handled || !Clickable || !IsEnabled || InFooter(e.OriginalSource)) return;
+        if (e.Handled || !Clickable || !IsEnabled || InFooter(e.OriginalSource)
+            || OverSeparateFooter(e.GetPosition(this))) return;
         _pressed = true;
         CaptureMouse();
         Palette.ScaleTo(_press, 0.965, 110, Palette.Out);
@@ -877,7 +917,7 @@ internal sealed class Tile : Grid
     }
 
     private void Release() =>
-        Palette.ScaleTo(_press, IsMouseOver && Clickable ? 1.012 : 1, 420,
+        Palette.ScaleTo(_press, _hovered ? 1.012 : 1, 420,
             new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.6 });
 
     private static double Dist(double x, double y) => Math.Sqrt(x * x + y * y);
@@ -1083,9 +1123,47 @@ internal sealed class VolumeBar : RangeBase
         Value = Minimum + Math.Clamp(p.X / ActualWidth, 0, 1) * (Maximum - Minimum);
     }
 
+    // Tactile : géré ici directement. Laissé à la conversion tactile → souris
+    // de WPF, le geste était avalé par le défilement tactile de la page.
+    private bool _touchDragging;
+
+    protected override void OnTouchDown(TouchEventArgs e)
+    {
+        base.OnTouchDown(e);
+        if (!IsEnabled || _touchDragging) return;
+        _dragging = _touchDragging = true;
+        CaptureTouch(e.TouchDevice);
+        SetFromPoint(e.GetTouchPoint(this).Position);
+        e.Handled = true;
+    }
+
+    protected override void OnTouchMove(TouchEventArgs e)
+    {
+        base.OnTouchMove(e);
+        if (!_touchDragging || e.TouchDevice.Captured != this) return;
+        SetFromPoint(e.GetTouchPoint(this).Position);
+        e.Handled = true;
+    }
+
+    protected override void OnTouchUp(TouchEventArgs e)
+    {
+        base.OnTouchUp(e);
+        if (!_touchDragging) return;
+        ReleaseTouchCapture(e.TouchDevice);
+        e.Handled = true;
+    }
+
+    protected override void OnLostTouchCapture(TouchEventArgs e)
+    {
+        base.OnLostTouchCapture(e);
+        _dragging = _touchDragging = false;
+    }
+
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
+        // Souris « promue » d'un toucher déjà traité ci-dessus : l'ignorer.
+        if (_touchDragging && e.StylusDevice != null) { e.Handled = true; return; }
         if (!IsEnabled) return;
         Focus();
         _dragging = true;
@@ -1097,12 +1175,13 @@ internal sealed class VolumeBar : RangeBase
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (_dragging && IsMouseCaptured) SetFromPoint(e.GetPosition(this));
+        if (_dragging && !_touchDragging && IsMouseCaptured) SetFromPoint(e.GetPosition(this));
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
+        if (_touchDragging) { if (e.StylusDevice != null) e.Handled = true; return; }
         if (!_dragging) return;
         _dragging = false;
         ReleaseMouseCapture();
