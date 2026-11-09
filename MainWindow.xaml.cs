@@ -1200,8 +1200,9 @@ public partial class MainWindow : Window
     {
         public required System.Windows.Shapes.Path Shape;
         public required TranslateTransform Pos;
-        public required GradientStop Core, Mid, Edge;
-        public double RX, RY, SpeedX, SpeedY, PhaseX, PhaseY, Hue, HueSpeed;
+        public required GradientStop Core, S1, S2, Mid, Edge;
+        public double RX, RY, SpeedX, SpeedY, PhaseX, PhaseY;
+        public double CR = 255, CG = 255, CB = 255; // couleur courante, glisse vers la cible
         public double[] PtFreq = [], PtPhase = [];
     }
 
@@ -1216,30 +1217,32 @@ public partial class MainWindow : Window
     /// </summary>
     private void CreateVuBlobs()
     {
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 8; i++)
         {
             // Trois arrêts : le cœur déjà doux, une mi-course encore présente,
             // un bord totalement transparent — la nappe n'a aucun contour.
+            // Courbe de fondu en cloche (plusieurs arrêts) et bord transparent
+            // atteint bien en deçà du contour de la forme : aucune arête.
             var core = new GradientStop(Colors.Transparent, 0);
-            var mid = new GradientStop(Colors.Transparent, 0.55);
-            var edge = new GradientStop(Colors.Transparent, 1);
+            var s1 = new GradientStop(Colors.Transparent, 0.14);
+            var s2 = new GradientStop(Colors.Transparent, 0.28);
+            var mid = new GradientStop(Colors.Transparent, 0.42);
+            var edge = new GradientStop(Colors.Transparent, 0.56);
             var pos = new TranslateTransform();
             var shape = new System.Windows.Shapes.Path
             {
-                Fill = new RadialGradientBrush { GradientStops = { core, mid, edge } },
+                Fill = new RadialGradientBrush { GradientStops = { core, s1, s2, mid, edge, new GradientStop(Colors.Transparent, 1) } },
                 RenderTransform = pos,
             };
             var blob = new VuBlob
             {
-                Shape = shape, Pos = pos, Core = core, Mid = mid, Edge = edge,
-                RX = 65 + _vuRng.NextDouble() * 55,
-                RY = 30 + _vuRng.NextDouble() * 24,
+                Shape = shape, Pos = pos, Core = core, S1 = s1, S2 = s2, Mid = mid, Edge = edge,
+                RX = 110 + _vuRng.NextDouble() * 90,
+                RY = 52 + _vuRng.NextDouble() * 40,
                 SpeedX = 0.30 + _vuRng.NextDouble() * 0.55,
                 SpeedY = 0.25 + _vuRng.NextDouble() * 0.50,
                 PhaseX = _vuRng.NextDouble() * Math.Tau,
                 PhaseY = _vuRng.NextDouble() * Math.Tau,
-                Hue = _vuRng.NextDouble() * 360,
-                HueSpeed = 0.25 + _vuRng.NextDouble() * 0.9,
                 // Chaque point de contour a sa fréquence et sa phase : la
                 // forme ondule sans jamais repasser par le même dessin.
                 PtFreq = Enumerable.Range(0, VuPoints)
@@ -1263,7 +1266,7 @@ public partial class MainWindow : Window
         for (int k = 0; k < VuPoints; k++)
         {
             double angle = k * Math.Tau / VuPoints;
-            double r = 1 + 0.34 * Math.Sin(_vuPhase * b.PtFreq[k] + b.PtPhase[k]);
+            double r = 1 + 0.22 * Math.Sin(_vuPhase * b.PtFreq[k] + b.PtPhase[k]);
             pts[k] = new System.Windows.Point(
                 b.RX * r * Math.Cos(angle), b.RY * r * Math.Sin(angle));
         }
@@ -1288,20 +1291,6 @@ public partial class MainWindow : Window
         return geometry;
     }
 
-    private static System.Windows.Media.Color Hsv(double hue, double sat, double val)
-    {
-        double c = val * sat;
-        double x = c * (1 - Math.Abs(hue / 60 % 2 - 1));
-        double m = val - c;
-        var (r, g, b) = ((int)(hue / 60) % 6) switch
-        {
-            0 => (c, x, 0d), 1 => (x, c, 0d), 2 => (0d, c, x),
-            3 => (0d, x, c), 4 => (x, 0d, c), _ => (c, 0d, x),
-        };
-        return System.Windows.Media.Color.FromRgb(
-            (byte)((r + m) * 255), (byte)((g + m) * 255), (byte)((b + m) * 255));
-    }
-
     /// <summary>
     /// Crête instantanée (0..1) du son que pilote le curseur — émis, reçu du
     /// réseau ou du téléphone ; null quand il n'y a rien à piloter.
@@ -1312,31 +1301,60 @@ public partial class MainWindow : Window
         : PhoneAudio.IsPresent ? PhoneAudio.Peak
         : null;
 
+    private readonly float[] _srcShown = new float[4];
+
     /// <summary>
-    /// Aurore diffuse sur tout le fond de la carte volume : l'opacité respire
-    /// avec le niveau (attaque immédiate, retombée douce) ; chaque nappe
-    /// dérive en 2D, se déforme (étirement, rotation) et change lentement de
-    /// couleur, le tout d'autant plus vite que le son est fort. Rien ne se
-    /// répète jamais — abstrait, sans barres ni chiffres.
+    /// Aurore diffuse sur tout le fond de la carte volume. La couleur dit
+    /// d'où vient le son : bleu = réseau, vert = téléphone, violet = notre
+    /// propre son émis, rose (couleur des AirPods) ajouté quand ils sont
+    /// connectés. Chaque source n'apparaît que tant qu'elle joue vraiment ;
+    /// les nappes se répartissent les couleurs actives et glissent de l'une
+    /// à l'autre sans saut. L'opacité respire avec le niveau (attaque
+    /// immédiate, retombée douce) ; la dérive et le morphing accélèrent avec
+    /// le volume. Abstrait, sans barres ni chiffres.
     /// </summary>
     private void UpdateVu()
     {
-        if (CurrentLevel() is not { } level)
+        // 0 = émis (violet), 1 = réseau (bleu), 2 = téléphone (vert)
+        float[] raw =
+        [
+            _sender.IsRunning ? _sender.Level : 0f,
+            _net.IsReceiving ? _net.OutputLevel : 0f,
+            PhoneAudio.IsPresent ? PhoneAudio.Peak : 0f,
+        ];
+        System.Windows.Media.Color[] tints = [Palette.Purple, Palette.BlueLight, Palette.Green];
+
+        float level = 0;
+        var active = new List<(System.Windows.Media.Color Color, float Level)>();
+        for (int i = 0; i < 3; i++)
         {
-            VuGlow.Opacity = 0;
+            _srcShown[i] = Math.Max(Math.Min(1f, raw[i]), _srcShown[i] * 0.94f);
+            level = Math.Max(level, _srcShown[i]);
+            if (_srcShown[i] > 0.01f) active.Add((tints[i], _srcShown[i]));
+        }
+
+        if (active.Count == 0)
+        {
+            // Plus de source : l'aurore s'éteint en fondu, pas d'un coup.
+            VuGlow.Opacity = VuGlow.Opacity < 0.01 ? 0 : VuGlow.Opacity * 0.93;
             _vuShown = 0f;
             return;
         }
 
-        _vuShown = Math.Max(Math.Min(1f, level), _vuShown * 0.86f);
-        double vis = Math.Sqrt(_vuShown); // racine : lisible aux niveaux modérés
-        VuGlow.Opacity = vis * 0.6;
+        // Les AirPods ne produisent pas de son eux-mêmes : ils colorent ce
+        // qui joue, tant qu'ils sont connectés.
+        if (_airPods.State == AirPodsState.Connected) active.Add((Palette.Rose, level));
 
-        _vuPhase += 0.035 + vis * 0.12;
+        _vuShown = level;
+        double vis = Math.Sqrt(_vuShown); // racine : lisible aux niveaux modérés
+        VuGlow.Opacity = Math.Min(1, vis * 1.1);
+
+        _vuPhase += 0.03 + vis * 0.10;
         double w = VuClip.ActualWidth, h = VuClip.ActualHeight;
 
-        foreach (var b in _blobs)
+        for (int i = 0; i < _blobs.Count; i++)
         {
+            var b = _blobs[i];
             // Dérive : le centre balaie toute la carte, en X comme en Y.
             b.Pos.X = w * (0.5 + 0.45 * Math.Sin(_vuPhase * b.SpeedX + b.PhaseX));
             b.Pos.Y = h * (0.5 + 0.45 * Math.Sin(_vuPhase * b.SpeedY + b.PhaseY));
@@ -1345,12 +1363,18 @@ public partial class MainWindow : Window
             // sur sa propre ondulation — la forme se transforme sans cesse.
             b.Shape.Data = BuildBlobGeometry(b);
 
-            // La teinte glisse en continu ; le bord reste la même couleur en
-            // totalement transparent pour un fondu propre entre nappes.
-            b.Hue = (b.Hue + b.HueSpeed * (0.4 + vis)) % 360;
-            var c = Hsv(b.Hue, 0.72, 1.0);
-            b.Core.Color = System.Windows.Media.Color.FromArgb(0x96, c.R, c.G, c.B);
-            b.Mid.Color = System.Windows.Media.Color.FromArgb(0x46, c.R, c.G, c.B);
+            // Couleur : la nappe prend une source active (répartition
+            // cyclique) et y glisse ; une source faible donne une nappe pâle.
+            var (target, srcLevel) = active[i % active.Count];
+            b.CR += (target.R - b.CR) * 0.12;
+            b.CG += (target.G - b.CG) * 0.12;
+            b.CB += (target.B - b.CB) * 0.12;
+            double k = 0.45 + 0.55 * Math.Sqrt(srcLevel);
+            var c = System.Windows.Media.Color.FromRgb((byte)b.CR, (byte)b.CG, (byte)b.CB);
+            b.Core.Color = System.Windows.Media.Color.FromArgb((byte)(0xA0 * k), c.R, c.G, c.B);
+            b.S1.Color = System.Windows.Media.Color.FromArgb((byte)(0x84 * k), c.R, c.G, c.B);
+            b.S2.Color = System.Windows.Media.Color.FromArgb((byte)(0x50 * k), c.R, c.G, c.B);
+            b.Mid.Color = System.Windows.Media.Color.FromArgb((byte)(0x22 * k), c.R, c.G, c.B);
             b.Edge.Color = System.Windows.Media.Color.FromArgb(0x00, c.R, c.G, c.B);
         }
     }
