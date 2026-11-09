@@ -63,8 +63,6 @@ public partial class MainWindow : Window
     private bool _syncingOutput;
     private VolumeKeyHook? _volumeKeys;
     private VolumeOsd? _osd;
-    private DispatcherTimer? _vuTimer;
-    private float _vuShown;
 
     // Niveaux G / D / B sous le statut de la tuile AirPods.
     private readonly BatteryBars _airPodsBars = new() { Margin = new Thickness(0, 5, 0, 0) };
@@ -185,21 +183,28 @@ public partial class MainWindow : Window
         ApplyLanguage();
         _airPods.Start();
 
-        // Vumètre : rafraîchi seulement quand le flyout est visible — l'app
-        // passe sa vie cachée, pas de réveil 20 fois par seconde pour rien.
+        // Vumètre : rafraîchi à chaque image (il doit suivre les attaques du
+        // son), mais seulement quand le flyout est visible — l'app passe sa
+        // vie cachée, pas de réveil 60 fois par seconde pour rien.
         // L'aurore est clippée aux coins arrondis de la tuile (rayon 18) : un
         // Border ne rogne pas ses enfants sur les angles, on pose la
         // géométrie à la main à chaque changement de taille.
         VuClip.SizeChanged += (_, _) => VuClip.Clip = new RectangleGeometry(
             new Rect(0, 0, VuClip.ActualWidth, VuClip.ActualHeight), 18, 18);
-        CreateVuBlobs();
+        _aurora = new VuAurora(VuGlow);
 
-        _vuTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        _vuTimer.Tick += (_, _) => UpdateVu();
         IsVisibleChanged += (_, _) =>
         {
-            if (IsVisible) _vuTimer.Start();
-            else { _vuTimer.Stop(); _vuShown = 0; }
+            if (IsVisible)
+            {
+                _vuLastFrame = null;
+                CompositionTarget.Rendering += OnVuFrame;
+            }
+            else
+            {
+                CompositionTarget.Rendering -= OnVuFrame;
+                _aurora?.Reset();
+            }
         };
 
         // Repère sonore du volume : au relâchement de la souris, sinon dès que
@@ -1187,110 +1192,6 @@ public partial class MainWindow : Window
 
     // ---------- Vumètre ----------
 
-    private double _vuPhase;
-
-    /// <summary>
-    /// Une nappe de l'aurore : une forme organique (polygone lissé en Bézier)
-    /// dont chaque point de contour ondule indépendamment, remplie d'un
-    /// dégradé radial qui s'évanouit en transparence — les couleurs se fondent
-    /// au lieu de s'empiler. Vitesses de dérive, d'ondulation et de glissement
-    /// de teinte propres à chaque nappe.
-    /// </summary>
-    private sealed class VuBlob
-    {
-        public required System.Windows.Shapes.Path Shape;
-        public required TranslateTransform Pos;
-        public required GradientStop Core, S1, S2, Mid, Edge;
-        public double RX, RY, SpeedX, SpeedY, PhaseX, PhaseY;
-        public double CR = 255, CG = 255, CB = 255; // couleur courante, glisse vers la cible
-        public double[] PtFreq = [], PtPhase = [];
-    }
-
-    private const int VuPoints = 7; // points de contour par nappe
-
-    private readonly List<VuBlob> _blobs = new();
-    private readonly Random _vuRng = new();
-
-    /// <summary>
-    /// Formes, tailles, vitesses et couleurs tirées au hasard : chaque
-    /// lancement de l'app a sa propre aurore.
-    /// </summary>
-    private void CreateVuBlobs()
-    {
-        for (int i = 0; i < 8; i++)
-        {
-            // Trois arrêts : le cœur déjà doux, une mi-course encore présente,
-            // un bord totalement transparent — la nappe n'a aucun contour.
-            // Courbe de fondu en cloche (plusieurs arrêts) et bord transparent
-            // atteint bien en deçà du contour de la forme : aucune arête.
-            var core = new GradientStop(Colors.Transparent, 0);
-            var s1 = new GradientStop(Colors.Transparent, 0.14);
-            var s2 = new GradientStop(Colors.Transparent, 0.28);
-            var mid = new GradientStop(Colors.Transparent, 0.42);
-            var edge = new GradientStop(Colors.Transparent, 0.56);
-            var pos = new TranslateTransform();
-            var shape = new System.Windows.Shapes.Path
-            {
-                Fill = new RadialGradientBrush { GradientStops = { core, s1, s2, mid, edge, new GradientStop(Colors.Transparent, 1) } },
-                RenderTransform = pos,
-            };
-            var blob = new VuBlob
-            {
-                Shape = shape, Pos = pos, Core = core, S1 = s1, S2 = s2, Mid = mid, Edge = edge,
-                RX = 110 + _vuRng.NextDouble() * 90,
-                RY = 52 + _vuRng.NextDouble() * 40,
-                SpeedX = 0.30 + _vuRng.NextDouble() * 0.55,
-                SpeedY = 0.25 + _vuRng.NextDouble() * 0.50,
-                PhaseX = _vuRng.NextDouble() * Math.Tau,
-                PhaseY = _vuRng.NextDouble() * Math.Tau,
-                // Chaque point de contour a sa fréquence et sa phase : la
-                // forme ondule sans jamais repasser par le même dessin.
-                PtFreq = Enumerable.Range(0, VuPoints)
-                    .Select(_ => 0.6 + _vuRng.NextDouble() * 1.3).ToArray(),
-                PtPhase = Enumerable.Range(0, VuPoints)
-                    .Select(_ => _vuRng.NextDouble() * Math.Tau).ToArray(),
-            };
-            VuGlow.Children.Add(shape);
-            _blobs.Add(blob);
-        }
-    }
-
-    /// <summary>
-    /// Contour organique du moment : rayon de chaque point modulé par sa
-    /// sinusoïde, puis lissage Catmull-Rom en Bézier fermées — aucune arête.
-    /// La géométrie est centrée sur l'origine, la translation place la nappe.
-    /// </summary>
-    private StreamGeometry BuildBlobGeometry(VuBlob b)
-    {
-        var pts = new System.Windows.Point[VuPoints];
-        for (int k = 0; k < VuPoints; k++)
-        {
-            double angle = k * Math.Tau / VuPoints;
-            double r = 1 + 0.22 * Math.Sin(_vuPhase * b.PtFreq[k] + b.PtPhase[k]);
-            pts[k] = new System.Windows.Point(
-                b.RX * r * Math.Cos(angle), b.RY * r * Math.Sin(angle));
-        }
-
-        var geometry = new StreamGeometry();
-        using (var gc = geometry.Open())
-        {
-            gc.BeginFigure(pts[0], isFilled: true, isClosed: true);
-            for (int k = 0; k < VuPoints; k++)
-            {
-                var p0 = pts[(k - 1 + VuPoints) % VuPoints];
-                var p1 = pts[k];
-                var p2 = pts[(k + 1) % VuPoints];
-                var p3 = pts[(k + 2) % VuPoints];
-                gc.BezierTo(
-                    new System.Windows.Point(p1.X + (p2.X - p0.X) / 6, p1.Y + (p2.Y - p0.Y) / 6),
-                    new System.Windows.Point(p2.X - (p3.X - p1.X) / 6, p2.Y - (p3.Y - p1.Y) / 6),
-                    p2, isStroked: false, isSmoothJoin: false);
-            }
-        }
-        geometry.Freeze();
-        return geometry;
-    }
-
     /// <summary>
     /// Crête instantanée (0..1) du son que pilote le curseur — émis, reçu du
     /// réseau ou du téléphone ; null quand il n'y a rien à piloter.
@@ -1301,82 +1202,26 @@ public partial class MainWindow : Window
         : PhoneAudio.IsPresent ? PhoneAudio.Peak
         : null;
 
-    private readonly float[] _srcShown = new float[4];
+    private VuAurora? _aurora;
+    private TimeSpan? _vuLastFrame;
 
     /// <summary>
-    /// Aurore diffuse sur tout le fond de la carte volume. La couleur dit
-    /// d'où vient le son : bleu = réseau, vert = téléphone, violet = notre
-    /// propre son émis, rose (couleur des AirPods) ajouté quand ils sont
-    /// connectés. Chaque source n'apparaît que tant qu'elle joue vraiment ;
-    /// les nappes se répartissent les couleurs actives et glissent de l'une
-    /// à l'autre sans saut. L'opacité respire avec le niveau (attaque
-    /// immédiate, retombée douce) ; la dérive et le morphing accélèrent avec
-    /// le volume. Abstrait, sans barres ni chiffres.
+    /// Vumètre « aurore » derrière la tuile Son reçu (voir VuAurora) : à
+    /// chaque image, on lui passe le temps écoulé et le niveau de chaque
+    /// source qui joue. Rendering peut tomber plusieurs fois pour la même
+    /// image : on ignore les doublons.
     /// </summary>
-    private void UpdateVu()
+    private void OnVuFrame(object? sender, EventArgs e)
     {
-        // 0 = émis (violet), 1 = réseau (bleu), 2 = téléphone (vert)
-        float[] raw =
-        [
+        var now = ((RenderingEventArgs)e).RenderingTime;
+        if (now == _vuLastFrame) return;
+        double dt = _vuLastFrame is { } last ? (now - last).TotalSeconds : 1 / 60.0;
+        _vuLastFrame = now;
+        _aurora?.Update(dt, VuClip.ActualWidth, VuClip.ActualHeight,
             _sender.IsRunning ? _sender.Level : 0f,
             _net.IsReceiving ? _net.OutputLevel : 0f,
             PhoneAudio.IsPresent ? PhoneAudio.Peak : 0f,
-        ];
-        System.Windows.Media.Color[] tints = [Palette.Purple, Palette.BlueLight, Palette.Green];
-
-        float level = 0;
-        var active = new List<(System.Windows.Media.Color Color, float Level)>();
-        for (int i = 0; i < 3; i++)
-        {
-            _srcShown[i] = Math.Max(Math.Min(1f, raw[i]), _srcShown[i] * 0.94f);
-            level = Math.Max(level, _srcShown[i]);
-            if (_srcShown[i] > 0.01f) active.Add((tints[i], _srcShown[i]));
-        }
-
-        if (active.Count == 0)
-        {
-            // Plus de source : l'aurore s'éteint en fondu, pas d'un coup.
-            VuGlow.Opacity = VuGlow.Opacity < 0.01 ? 0 : VuGlow.Opacity * 0.93;
-            _vuShown = 0f;
-            return;
-        }
-
-        // Les AirPods ne produisent pas de son eux-mêmes : ils colorent ce
-        // qui joue, tant qu'ils sont connectés.
-        if (_airPods.State == AirPodsState.Connected) active.Add((Palette.Rose, level));
-
-        _vuShown = level;
-        double vis = Math.Sqrt(_vuShown); // racine : lisible aux niveaux modérés
-        VuGlow.Opacity = Math.Min(1, vis * 1.1);
-
-        _vuPhase += 0.03 + vis * 0.10;
-        double w = VuClip.ActualWidth, h = VuClip.ActualHeight;
-
-        for (int i = 0; i < _blobs.Count; i++)
-        {
-            var b = _blobs[i];
-            // Dérive : le centre balaie toute la carte, en X comme en Y.
-            b.Pos.X = w * (0.5 + 0.45 * Math.Sin(_vuPhase * b.SpeedX + b.PhaseX));
-            b.Pos.Y = h * (0.5 + 0.45 * Math.Sin(_vuPhase * b.SpeedY + b.PhaseY));
-
-            // Morphing : le contour est redessiné à chaque pas, chaque point
-            // sur sa propre ondulation — la forme se transforme sans cesse.
-            b.Shape.Data = BuildBlobGeometry(b);
-
-            // Couleur : la nappe prend une source active (répartition
-            // cyclique) et y glisse ; une source faible donne une nappe pâle.
-            var (target, srcLevel) = active[i % active.Count];
-            b.CR += (target.R - b.CR) * 0.12;
-            b.CG += (target.G - b.CG) * 0.12;
-            b.CB += (target.B - b.CB) * 0.12;
-            double k = 0.45 + 0.55 * Math.Sqrt(srcLevel);
-            var c = System.Windows.Media.Color.FromRgb((byte)b.CR, (byte)b.CG, (byte)b.CB);
-            b.Core.Color = System.Windows.Media.Color.FromArgb((byte)(0xA0 * k), c.R, c.G, c.B);
-            b.S1.Color = System.Windows.Media.Color.FromArgb((byte)(0x84 * k), c.R, c.G, c.B);
-            b.S2.Color = System.Windows.Media.Color.FromArgb((byte)(0x50 * k), c.R, c.G, c.B);
-            b.Mid.Color = System.Windows.Media.Color.FromArgb((byte)(0x22 * k), c.R, c.G, c.B);
-            b.Edge.Color = System.Windows.Media.Color.FromArgb(0x00, c.R, c.G, c.B);
-        }
+            _airPods.State == AirPodsState.Connected);
     }
 
     private void PollPhoneSession()
