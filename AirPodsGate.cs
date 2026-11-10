@@ -99,7 +99,7 @@ internal sealed class AirPodsGate : IDisposable
     private AirPodsAdvert? _lastAdvert;
     private readonly Dictionary<ushort, int> _modelVotes = new();
     // Dernier état du couvercle vu, par écouteur émetteur (true = gauche/droite selon le bit 0x20).
-    private readonly Dictionary<bool, (bool Closed, int Count)> _lastLid = new();
+    private readonly Dictionary<bool, (bool Closed, int Count, bool InCase)> _lastLid = new();
 
     private DateTime? _disconnectedSince;
     private DateTime? _awaitUntil;      // on attend que Windows se connecte après déverrouillage
@@ -599,12 +599,17 @@ internal sealed class AirPodsGate : IDisposable
         // l'état), car chacun a son propre compteur. Comparer des annonces de
         // deux écouteurs différents donnait de fausses ouvertures ; comparer
         // un écouteur à lui-même est fiable (fermé→ouvert, ou compteur changé).
+        // Mais seulement écouteurs DANS le boîtier : hors du boîtier (à
+        // l'oreille, reliés à l'iPhone, boîtier fermé), l'octet couvercle
+        // alterne fermé/ouvert toutes les quelques secondes avec un compteur
+        // qui avance (vu le 9/11/2026, états 0x53/0x73). Chaque fausse
+        // « réouverture » levait le refus et rouvrait la proposition en boucle.
         bool emitter = (advert.RawStatus & 0x20) != 0;
         bool lidJustOpened = false;
-        if (_lastLid.TryGetValue(emitter, out var prev) && !advert.LidClosed &&
-            (prev.Closed || prev.Count != advert.LidOpenCount))
+        if (_lastLid.TryGetValue(emitter, out var prev) && prev.InCase && advert.BothInCase &&
+            !advert.LidClosed && (prev.Closed || prev.Count != advert.LidOpenCount))
             lidJustOpened = true;
-        _lastLid[emitter] = (advert.LidClosed, advert.LidOpenCount);
+        _lastLid[emitter] = (advert.LidClosed, advert.LidOpenCount, advert.BothInCase);
 
         // Rangés (boîtier fermé, écouteurs dedans) : ils émettent encore, mais
         // ne sont pas disponibles. Une annonce isolée ne suffit pas (les deux
