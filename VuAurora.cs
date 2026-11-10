@@ -9,7 +9,7 @@ namespace AudioShare;
 /// Vumètre « aurore » de la tuile Son reçu : quelques lueurs douces derrière
 /// la tuile qui dansent avec le son. La couleur dit d'où vient le son
 /// (violet = émis, bleu = réseau, vert = téléphone, une lueur rose quand les
-/// AirPods sont connectés).
+/// AirPods sont connectés ; tout en rose pour le son du PC lui-même aux AirPods).
 ///
 /// Ce qui la rend vivante :
 /// - gain automatique : le niveau est jugé par rapport au volume récent du
@@ -38,6 +38,7 @@ internal sealed class VuAurora
         [Rgb(0xBF, 0x5A, 0xF2), Rgb(0x5E, 0x5C, 0xE6), Rgb(0xDA, 0x8F, 0xFF)], // émis : violet, indigo, lilas
         [Rgb(0x0A, 0x84, 0xFF), Rgb(0x64, 0xD2, 0xFF), Rgb(0x5E, 0x5C, 0xE6)], // réseau : bleu, cyan, indigo
         [Rgb(0x30, 0xD1, 0x58), Rgb(0x66, 0xD4, 0xCF), Rgb(0x40, 0xC8, 0xE0)], // téléphone : vert, menthe, sarcelle
+        [Rgb(0xFF, 0x64, 0x82), Rgb(0xFF, 0x37, 0x5F), Rgb(0xDA, 0x8F, 0xFF)], // son du PC aux AirPods : rose, framboise, lilas
     ];
     private static readonly Color AirPodsAccent = Rgb(0xFF, 0x64, 0x82);
 
@@ -64,7 +65,7 @@ internal sealed class VuAurora
 
     private readonly Canvas _host;
     private readonly List<Glow> _glows = new();
-    private readonly float[] _src = new float[3];
+    private readonly float[] _src = new float[4];
     private double _agc = 0.05, _fast, _slow, _pulse, _cooldown, _presence, _phase;
     private int _beats;
     private bool _armed = true;
@@ -124,17 +125,25 @@ internal sealed class VuAurora
     /// <summary>
     /// Un pas d'animation. dt = secondes écoulées depuis le précédent ;
     /// niveaux de crête 0..1 de chaque source, 0 si elle ne joue pas.
+    /// pc = son joué par le PC lui-même : avec les AirPods connectés, il
+    /// allume l'aurore rose quand aucune autre source ne joue (son compteur
+    /// inclut déjà le son reçu, il ne doit pas s'y ajouter).
     /// </summary>
     public void Update(double dt, double width, double height,
-        float sent, float network, float phone, bool airPods)
+        float sent, float network, float phone, float pc, bool airPods)
     {
         dt = Math.Clamp(dt, 0.001, 0.1);
-        float[] raw = [sent, network, phone];
+        float[] raw = [sent, network, phone, 0f];
         double level = 0;
         var active = new List<Color[]>();
         double hold = Math.Exp(-dt / 0.6);
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
         {
+            if (i == 3)
+            {
+                if (!airPods || active.Count > 0) { _src[3] = 0; continue; }
+                raw[3] = pc;
+            }
             // Mémoire courte par source : un silence d'une fraction de
             // seconde ne fait pas sauter la couleur.
             _src[i] = (float)Math.Max(Math.Min(1f, raw[i]), _src[i] * hold);

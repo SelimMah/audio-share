@@ -72,10 +72,14 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Même ordre que DuckLogo.Draw : bec et aile dessous, corps par-dessus.
+        // Version pleine du logo : le corps est rempli, l'œil évidé (la
+        // syntaxe de Geometry.Parse remplit en pair-impair), et le contour
+        // garde l'épaisseur du trait pour la même silhouette que l'icône.
         LogoBeak.Data = Geometry.Parse(DuckLogo.BeakPath);
-        LogoWing.Data = Geometry.Parse(DuckLogo.WingPath);
-        LogoBody.Data = Geometry.Parse(DuckLogo.BodyPath);
+        // Œil et aile agrandis : à 26 px, ceux de l'icône seraient trop petits.
+        LogoBody.Data = Geometry.Parse(DuckLogo.OutlinePath + " " + DuckLogo.EyeLargePath);
+        LogoOutline.Data = Geometry.Parse(DuckLogo.OutlinePath);
+        LogoWing.Data = Geometry.Parse(DuckLogo.WingLargePath);
         LogoBox.RenderTransform = new TransformGroup { Children = { _logoPop, _logoTilt, _logoHop } };
         LogoHost.MouseEnter += (_, _) => WaddleLogo();
 
@@ -1279,11 +1283,13 @@ public partial class MainWindow : Window
         if (now == _vuLastFrame) return;
         double dt = _vuLastFrame is { } last ? (now - last).TotalSeconds : 1 / 60.0;
         _vuLastFrame = now;
+        bool airPods = _airPods.State == AirPodsState.Connected;
         _aurora?.Update(dt, VuClip.ActualWidth, VuClip.ActualHeight,
             _sender.IsRunning ? _sender.Level : 0f,
             _net.IsReceiving ? _net.OutputLevel : 0f,
             PhoneAudio.IsPresent ? PhoneAudio.Peak : 0f,
-            _airPods.State == AirPodsState.Connected);
+            airPods ? PcAudio.Peak : 0f,
+            airPods);
     }
 
     private void PollPhoneSession()

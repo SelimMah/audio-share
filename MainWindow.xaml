@@ -33,11 +33,16 @@
                         <Border x:Name="LogoHost" Background="#00FFFFFF" VerticalAlignment="Center"
                                 Margin="0,0,10,0">
                             <Viewbox x:Name="LogoBox" RenderTransformOrigin="0.5,0.5" Width="26" Height="26">
-                                <Canvas Width="512" Height="512">
-                                    <Path x:Name="LogoBeak" Fill="#FF7A10"/>
-                                    <Path x:Name="LogoWing" Fill="#188C46"
-                                          Stroke="#188C46" StrokeThickness="6"/>
+                                <!-- Canard plein (mêmes tracés que l'icône au trait) : corps
+                                     rempli, œil évidé ; bec orange et aile verte. -->
+                                <Canvas Width="560" Height="560">
+                                    <Path x:Name="LogoBeak" Fill="#FF7A10" Stroke="#FF7A10" StrokeThickness="40"
+                                          StrokeLineJoin="Round"/>
                                     <Path x:Name="LogoBody" Fill="{StaticResource Label}"/>
+                                    <Path x:Name="LogoOutline" Stroke="{StaticResource Label}" StrokeThickness="40"
+                                          StrokeLineJoin="Round"/>
+                                    <Path x:Name="LogoWing" Fill="#188C46" Stroke="#188C46" StrokeThickness="24"
+                                          StrokeLineJoin="Round"/>
                                 </Canvas>
                             </Viewbox>
                         </Border>

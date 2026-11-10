@@ -146,29 +146,36 @@ internal sealed class TrayIcon : IDisposable
     private static readonly bool Dev = !Updater.IsInstalledCopy;
 
     /// <summary>
-    /// Dessine l'icône en 64×64 (Windows la réduit proprement) : le logo
-    /// tout blanc (noir sur une barre des tâches claire), avec son bec orange
-    /// quand un appareil est relié.
+    /// Dessine l'icône à la taille exacte de la zone de notification (16 px
+    /// à 100 %, 20 à 125 %…) : le canard est au trait, et une image réduite
+    /// par Windows le rendrait flou. Le logo est tout blanc (noir sur une
+    /// barre des tâches claire), avec son bec orange et son aile verte quand
+    /// un appareil est relié.
     /// </summary>
     private static Icon Draw(bool connected, bool lightTaskbar)
     {
-        using var bmp = new Bitmap(64, 64);
+        int size = Math.Max(16, SystemInformation.SmallIconSize.Width);
+        using var bmp = new Bitmap(size, size);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Color.Transparent);
 
-            DuckLogo.Draw(g, new RectangleF(0, 0, 64, 64),
-                lightTaskbar ? Color.Black : Color.White, connected);
+            // Toute la hauteur de l'icône, et un trait un peu plus épais que
+            // celui des icônes système (3 px à 32 px contre 2) : le canard,
+            // plus étroit qu'elles, paraîtrait sinon plus petit et plus maigre.
+            var (bounds, stroke) = DuckLogo.Fit(size, size, size * 3f / 32f);
+            DuckLogo.Draw(g, bounds, lightTaskbar ? Color.Black : Color.White, connected, stroke);
 
-            // Pastille « dev » en bas à droite, lisible même en 16×16
+            // Pastille « dev » en bas à droite (cotes pensées pour 64 px)
             if (Dev)
             {
+                float k = size / 64f;
                 using var badge = new SolidBrush(Color.FromArgb(255, 159, 10));
-                g.FillEllipse(badge, 42f, 42f, 19f, 19f);
-                using var ring = new Pen(Color.White, 3f);
-                g.DrawEllipse(ring, 42f, 42f, 19f, 19f);
+                g.FillEllipse(badge, 42f * k, 42f * k, 19f * k, 19f * k);
+                using var ring = new Pen(Color.White, Math.Max(1f, 3f * k));
+                g.DrawEllipse(ring, 42f * k, 42f * k, 19f * k, 19f * k);
             }
         }
         return Icon.FromHandle(bmp.GetHicon());
