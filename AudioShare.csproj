@@ -12,7 +12,10 @@
     <RootNamespace>AudioShare</RootNamespace>
     <!-- À garder synchronisée avec MyAppVersion dans installer.iss :
          c'est elle que l'app compare à la derniere release GitHub -->
-    <Version>1.9.7</Version>
+    <Version>1.9.8</Version>
+    <!-- Icône de l'exe (menu Démarrer, recherche Windows, barre des tâches) :
+         générée par icon\make-app-icon.ps1 -->
+    <ApplicationIcon>icon\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,7 +5,7 @@
 ; changé : l'exe, l'AppId, la clé Run et le nom du setup gardent l'ancien
 ; pour que les installations existantes se mettent à jour en place.
 #define MyAppName "Duckast"
-#define MyAppVersion "1.9.7"
+#define MyAppVersion "1.9.8"
 #define MyAppExeName "AudioShare.exe"
 
 ; Garde-fou : compiler depuis un dossier publish\ périmé produit un
@@ -37,6 +37,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=icon\app.ico
 CloseApplications=yes
 
 [Languages]
