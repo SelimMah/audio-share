@@ -311,7 +311,7 @@
                         <Border CornerRadius="17" Margin="1" BorderBrush="#1AFFFFFF" BorderThickness="0,1,0,0"
                                 IsHitTestVisible="False"/>
                         <StackPanel Margin="16,14,16,14">
-                            <Grid>
+                            <Grid x:Name="VolumeHeaderRow" ClipToBounds="True">
                                 <TextBlock x:Name="VolumeHeader" Text="RECEIVED AUDIO"
                                            FontFamily="{StaticResource Body}" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{StaticResource LabelSecondary}" VerticalAlignment="Center"/>
@@ -319,17 +319,57 @@
                                            FontFamily="{StaticResource Body}" FontSize="15" FontWeight="SemiBold"
                                            Foreground="{StaticResource Label}" VerticalAlignment="Center"/>
                             </Grid>
-                            <Grid Height="44" Margin="0,12,0,0">
-                                <local:VolumeBar x:Name="VolumeSlider" Style="{StaticResource VolumeBarStyle}"
-                                                 ValueChanged="Volume_Changed"/>
-                                <Button x:Name="MuteButton" Content="&#xE995;" Style="{StaticResource BarIconButton}"
-                                        Width="40" Height="40" Margin="3,0,0,0"
-                                        HorizontalAlignment="Left" VerticalAlignment="Center"
-                                        Click="Mute_Click">
-                                    <Button.Foreground>
-                                        <SolidColorBrush x:Name="MuteBrush" Color="#1B1D22"/>
-                                    </Button.Foreground>
-                                </Button>
+                            <!-- Téléphone + PC en même temps : l'en-tête s'efface et sa
+                                 place loge une 2e barre (celle du téléphone, en haut) — la
+                                 carte garde sa hauteur. Chaque barre porte alors sa source
+                                 et son pourcentage (MainWindow.UpdateVolumeLayout, transition
+                                 animée par ApplyVolumeMorph). -->
+                            <Grid x:Name="VolumeBars" Height="44" Margin="0,12,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition x:Name="PhoneBarRowDef" Height="0"/>
+                                    <RowDefinition x:Name="VolumeBarsGap" Height="0"/>
+                                    <RowDefinition x:Name="MainBarRowDef" Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid x:Name="MainBarRow" Grid.Row="2">
+                                    <local:VolumeBar x:Name="VolumeSlider" Style="{StaticResource VolumeBarStyle}"
+                                                     ValueChanged="Volume_Changed"/>
+                                    <Button x:Name="MuteButton" Content="&#xE995;" Style="{StaticResource BarIconButton}"
+                                            Width="40" Margin="3,0,0,0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                            Click="Mute_Click">
+                                        <Button.Foreground>
+                                            <SolidColorBrush x:Name="MuteBrush" Color="#1B1D22"/>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <StackPanel x:Name="MainBarLabel" Orientation="Horizontal" Visibility="Collapsed" Opacity="0"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                                IsHitTestVisible="False">
+                                        <TextBlock x:Name="MainBarGlyph" Text="&#xE7F4;" FontFamily="{StaticResource Icons}"
+                                                   FontSize="13" VerticalAlignment="Center" Margin="0,1,6,0"/>
+                                        <TextBlock x:Name="MainBarPercent" Text="—" FontFamily="{StaticResource Body}"
+                                                   FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid x:Name="PhoneBarRow" Visibility="Collapsed" Opacity="0">
+                                    <local:VolumeBar x:Name="PhoneVolumeSlider" Style="{StaticResource VolumeBarStyle}"
+                                                     ValueChanged="PhoneVolume_Changed"/>
+                                    <Button x:Name="PhoneMuteButton" Content="&#xE995;" Style="{StaticResource BarIconButton}"
+                                            Width="40" Margin="3,0,0,0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                            Click="PhoneMute_Click">
+                                        <Button.Foreground>
+                                            <SolidColorBrush x:Name="PhoneMuteBrush" Color="#1B1D22"/>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <StackPanel x:Name="PhoneBarLabel" Orientation="Horizontal"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                                IsHitTestVisible="False">
+                                        <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource Icons}"
+                                                   FontSize="13" VerticalAlignment="Center" Margin="0,1,6,0"/>
+                                        <TextBlock x:Name="PhoneBarPercent" Text="—" FontFamily="{StaticResource Body}"
+                                                   FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                             <Border x:Name="BalanceCard" CornerRadius="9" Background="{StaticResource SegmentBed}"
                                     Height="34" Margin="0,12,0,0">

@@ -248,6 +248,10 @@ public partial class MainWindow : Window
         {
             if (_toneTimer.IsEnabled) PlayVolumeTone();
         };
+        PhoneVolumeSlider.PreviewMouseLeftButtonUp += (_, _) =>
+        {
+            if (_toneTimer.IsEnabled) PlayVolumeTone();
+        };
         _toneTimer.Tick += (_, _) =>
         {
             if (Mouse.LeftButton != MouseButtonState.Pressed) PlayVolumeTone();
@@ -291,6 +295,7 @@ public partial class MainWindow : Window
 
         VolumeSlider.IsEnabledChanged += (_, _) => UpdateVolumeReadout();
         VolumeSlider.SizeChanged += (_, _) => UpdateVolumeReadout();
+        PhoneVolumeSlider.SizeChanged += (_, _) => UpdateVolumeReadout();
     }
 
     /// <summary>
@@ -1304,8 +1309,20 @@ public partial class MainWindow : Window
         bool present = PhoneAudio.IsPresent;
         VolumeSlider.IsEnabled = present || _net.IsReceiving || _sender.IsRunning;
         MuteButton.IsEnabled = VolumeSlider.IsEnabled;
-        // En émission, le curseur appartient au volume émis.
-        if (_sender.IsRunning || !present) return;
+        // Barre du téléphone (mode deux barres) : suit son volume réel.
+        if (_dualVolume && present
+            && Math.Abs(PhoneVolumeSlider.Value - PhoneAudio.Volume) >= 0.02
+            && !PhoneVolumeSlider.IsMouseCaptured)
+        {
+            _syncingVolume = true;
+            PhoneVolumeSlider.Value = PhoneAudio.Volume;
+            _syncingVolume = false;
+        }
+        // En émission, le curseur appartient au volume émis ; en réception
+        // réseau, au volume de l'émetteur (reflété par ASHAREVOL). Sinon la
+        // session A2DP — même fantôme, restée active sans téléphone — le
+        // ramènerait à son propre volume (100 %) chaque seconde.
+        if (_sender.IsRunning || _net.IsReceiving || !present) return;
 
         float volume = PhoneAudio.Volume;
         if (Math.Abs(VolumeSlider.Value - volume) < 0.02) return;
@@ -1340,6 +1357,7 @@ public partial class MainWindow : Window
 
         // Repère sonore : pas pendant le geste, une seule note quand il se
         // termine (relâchement, ou valeur stable pour le clavier).
+        _tonePhone = false;
         _toneTimer.Stop();
         _toneTimer.Start();
 
@@ -1362,6 +1380,124 @@ public partial class MainWindow : Window
 
     private readonly DispatcherTimer _toneTimer = new() { Interval = TimeSpan.FromMilliseconds(160) };
 
+    /// <summary>Le dernier geste visait la barre du téléphone (mode deux barres).</summary>
+    private bool _tonePhone;
+
+    /// <summary>
+    /// Barre du téléphone (mode deux barres) : volume de la session A2DP,
+    /// indépendant du son réseau, qui garde la barre principale.
+    /// </summary>
+    private void PhoneVolume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateBarIcon(PhoneVolumeSlider, PhoneMuteButton, _phoneMutePop);
+        UpdateVolumeReadout();
+        if (_syncingVolume || !IsLoaded) return;
+        _tonePhone = true;
+        _toneTimer.Stop();
+        _toneTimer.Start();
+        PhoneAudio.Volume = (float)e.NewValue;
+    }
+
+    private float _prePhoneMuteVolume = 0.5f;
+
+    private void PhoneMute_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhoneVolumeSlider.Value > 0.001)
+        {
+            _prePhoneMuteVolume = (float)PhoneVolumeSlider.Value;
+            PhoneVolumeSlider.Value = 0;
+        }
+        else
+        {
+            PhoneVolumeSlider.Value = _prePhoneMuteVolume > 0.001f ? _prePhoneMuteVolume : 0.5;
+        }
+    }
+
+    private bool _dualVolume;
+    private double _volumeHeaderHeight = 20;
+
+    /// <summary>
+    /// Téléphone réellement relié ET son réseau (reçu ou émis) : deux barres
+    /// indépendantes, sans agrandir la carte — l'en-tête « SON REÇU » cède sa
+    /// place (hauteur + marge) à la barre du téléphone, posée au-dessus de
+    /// celle du PC, et chaque barre porte sa source et son pourcentage. Seul
+    /// le téléphone connecté compte : la session A2DP fantôme (voir impasse
+    /// 11) ne doit pas dédoubler la carte.
+    /// </summary>
+    private void UpdateVolumeLayout()
+    {
+        bool dual = PhoneOpened && (_net.IsReceiving || _sender.IsRunning);
+        if (dual == _dualVolume) return;
+        _dualVolume = dual;
+
+        if (dual)
+        {
+            // Hauteur naturelle de l'en-tête, relevée avant qu'il ne fonde.
+            if (VolumeMorph <= 0 && VolumeHeaderRow.ActualHeight > 0)
+                _volumeHeaderHeight = VolumeHeaderRow.ActualHeight;
+            _syncingVolume = true;
+            PhoneVolumeSlider.Value = PhoneAudio.Volume;
+            _syncingVolume = false;
+        }
+
+        double to = dual ? 1 : 0;
+        if (!IsVisible)
+        {
+            BeginAnimation(VolumeMorphProperty, null);
+            VolumeMorph = to;
+            return;
+        }
+        // Courbe en S, comme la balance : l'en-tête fond pendant que la
+        // barre du téléphone se déplie du haut et que celle du PC s'affine.
+        BeginAnimation(VolumeMorphProperty, new DoubleAnimation(to, TimeSpan.FromMilliseconds(460))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
+        });
+    }
+
+    private static readonly DependencyProperty VolumeMorphProperty = DependencyProperty.Register(
+        nameof(VolumeMorph), typeof(double), typeof(MainWindow),
+        new PropertyMetadata(0.0, (d, e) => ((MainWindow)d).ApplyVolumeMorph((double)e.NewValue)));
+
+    /// <summary>0 = une barre sous l'en-tête, 1 = deux barres à sa place.</summary>
+    private double VolumeMorph
+    {
+        get => (double)GetValue(VolumeMorphProperty);
+        set => SetValue(VolumeMorphProperty, value);
+    }
+
+    /// <summary>
+    /// Pose la mise en page intermédiaire : la somme en-tête + marge + barres
+    /// reste constante à tout instant, donc la carte ne bouge pas d'un pixel.
+    /// </summary>
+    private void ApplyVolumeMorph(double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        double header = _volumeHeaderHeight;
+        double half = (header + 12 + 44 - 8) / 2; // chaque barre, une fois dédoublée
+
+        VolumeHeaderRow.Height = t <= 0 ? double.NaN : header * (1 - t);
+        VolumeHeaderRow.Opacity = Math.Clamp(1 - t * 2, 0, 1); // fondu dans la 1re moitié
+        VolumeHeaderRow.Visibility = t >= 1 ? Visibility.Collapsed : Visibility.Visible;
+
+        VolumeBars.Margin = new Thickness(0, 12 * (1 - t), 0, 0);
+        VolumeBars.Height = t <= 0 ? 44 : 44 + t * (2 * half + 8 - 44);
+        PhoneBarRowDef.Height = new GridLength(t * half);
+        VolumeBarsGap.Height = new GridLength(t * 8);
+        MainBarRowDef.Height = new GridLength(44 + t * (half - 44));
+
+        // Contenu de la barre du téléphone et étiquettes : apparaissent dans
+        // la 2de moitié, une fois qu'il y a la place de les lire.
+        double late = Math.Clamp(t * 2 - 1, 0, 1);
+        PhoneBarRow.Visibility = t > 0 ? Visibility.Visible : Visibility.Collapsed;
+        PhoneBarRow.Opacity = Math.Clamp(t * 1.5, 0, 1);
+        PhoneBarLabel.Opacity = late;
+        PhoneMuteButton.Opacity = late;
+        MainBarLabel.Visibility = t > 0 ? Visibility.Visible : Visibility.Collapsed;
+        MainBarLabel.Opacity = late;
+        UpdateVolumeReadout();
+    }
+
     /// <summary>
     /// Une note brève au volume choisi, à la fin du geste — et seulement si
     /// rien ne joue : quand du son passe, c'est lui qui renseigne, inutile de
@@ -1371,6 +1507,14 @@ public partial class MainWindow : Window
     private void PlayVolumeTone()
     {
         _toneTimer.Stop();
+        if (_tonePhone)
+        {
+            // Barre du téléphone : son flux ne suit que la sortie par défaut.
+            float pv = (float)PhoneVolumeSlider.Value;
+            if (pv < 0.001f || PhoneAudio.Peak > 0.01f) return;
+            VolumeTestTone.Play(pv * _balL, pv * _balR);
+            return;
+        }
         float v = (float)VolumeSlider.Value;
         if (v < 0.001f) return;
         if (CurrentLevel() is not { } level || level > 0.01f) return;
@@ -1417,41 +1561,70 @@ public partial class MainWindow : Window
 
     private void UpdateMuteIcon()
     {
-        double v = VolumeSlider.Value;
-        var before = MuteButton.Content;
-        MuteButton.Content = v switch
+        UpdateBarIcon(VolumeSlider, MuteButton, _mutePop);
+        UpdateVolumeReadout();
+    }
+
+    private readonly ScaleTransform _phoneMutePop = new();
+
+    /// <summary>Pictogramme haut-parleur d'une barre, selon son palier.</summary>
+    private void UpdateBarIcon(VolumeBar bar, System.Windows.Controls.Button button, ScaleTransform pop)
+    {
+        double v = bar.Value;
+        var before = button.Content;
+        button.Content = v switch
         {
-            <= 0.001 => "", // muet
-            < 0.34 => "",
-            < 0.67 => "",
-            _ => "",
+            <= 0.001 => "\uE74F", // muet
+            < 0.34 => "\uE993",
+            < 0.67 => "\uE994",
+            _ => "\uE995",
         };
-        MuteButton.ToolTip = v <= 0.001
+        button.ToolTip = v <= 0.001
             ? Loc.T("Unmute", "Rétablir le son")
             : Loc.T("Mute", "Couper le son");
 
         // Le pictogramme change de palier : petit rebond pour le signaler.
-        if (IsVisible && !Equals(before, MuteButton.Content))
+        if (IsVisible && !Equals(before, button.Content))
         {
-            MuteButton.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
-            MuteButton.RenderTransform = _mutePop;
-            Pop(_mutePop, 0.78, 260);
+            button.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            button.RenderTransform = pop;
+            Pop(pop, 0.78, 260);
         }
-        UpdateVolumeReadout();
     }
 
     private static readonly System.Windows.Media.Color IconOnFill = System.Windows.Media.Color.FromRgb(0x1B, 0x1D, 0x22);
+    private readonly SolidColorBrush _mainLabelBrush = new(Colors.White);
+    private readonly SolidColorBrush _phoneLabelBrush = new(Colors.White);
 
     /// <summary>
-    /// Pourcentage à droite de « SON REÇU », et couleur du pictogramme posé
-    /// dans la barre : sombre sur la partie remplie, blanc sur la piste.
+    /// Pourcentage à droite de « SON REÇU » (dans chaque barre en mode deux
+    /// barres), et couleur des pictogrammes posés dans les barres : sombres
+    /// sur la partie remplie, blancs sur la piste.
     /// </summary>
     private void UpdateVolumeReadout()
     {
         int pct = (int)Math.Round(VolumeSlider.Value * 100);
         VolumePercent.Text = VolumeSlider.IsEnabled ? Loc.T($"{pct}%", $"{pct} %") : "—";
+        MainBarPercent.Text = VolumePercent.Text;
         bool onFill = VolumeSlider.IsEnabled && VolumeSlider.FilledWidth > 32;
         Palette.ColorTo(MuteBrush, onFill ? IconOnFill : Colors.White, IsVisible, 220);
+        BarLabelColor(VolumeSlider, MainBarLabel, _mainLabelBrush);
+
+        int ppct = (int)Math.Round(PhoneVolumeSlider.Value * 100);
+        PhoneBarPercent.Text = Loc.T($"{ppct}%", $"{ppct} %");
+        bool phoneOnFill = PhoneVolumeSlider.FilledWidth > 32;
+        Palette.ColorTo(PhoneMuteBrush, phoneOnFill ? IconOnFill : Colors.White, IsVisible, 220);
+        BarLabelColor(PhoneVolumeSlider, PhoneBarLabel, _phoneLabelBrush);
+    }
+
+    /// <summary>Étiquette (source + %) à droite d'une barre : sombre dès que le remplissage atteint son milieu.</summary>
+    private void BarLabelColor(VolumeBar bar, FrameworkElement label, SolidColorBrush brush)
+    {
+        if (System.Windows.Documents.TextElement.GetForeground(label) != brush)
+            System.Windows.Documents.TextElement.SetForeground(label, brush);
+        double mid = bar.ActualWidth - 12 - label.ActualWidth / 2;
+        bool onFill = bar.IsEnabled && bar.FilledWidth > mid;
+        Palette.ColorTo(brush, onFill ? IconOnFill : Colors.White, IsVisible, 220);
     }
 
     // ---------- Balance ----------
@@ -2336,6 +2509,7 @@ public partial class MainWindow : Window
     private void UpdateTrayIcon()
     {
         _tray.SetConnected(PhoneOpened || _net.IsReceiving || _sender.IsStreaming);
+        UpdateVolumeLayout();
         // Mêmes moments que l'icône : la tuile du téléphone suit l'état réel.
         UpdatePhoneTile();
     }
