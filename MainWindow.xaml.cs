@@ -215,6 +215,7 @@ public partial class MainWindow : Window
         Loc.Changed += ApplyLanguage;
         ApplyLanguage();
         _airPods.Start();
+        System.Windows.Application.Current.SessionEnding += OnWindowsSessionEnding;
 
         // Vumètre : rafraîchi à chaque image (il doit suivre les attaques du
         // son), mais seulement quand le flyout est visible — l'app passe sa
@@ -2557,8 +2558,37 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool ShutdownBlockReasonCreate(IntPtr hwnd, string reason);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShutdownBlockReasonDestroy(IntPtr hwnd);
+
+    /// <summary>
+    /// WM_QUERYENDSESSION (arrêt, redémarrage, déconnexion), sur le thread UI
+    /// et AVANT que WPF ne ferme la fenêtre : on verrouille l'audio des AirPods
+    /// ici, connectés ou non. Décocher les services prend ~9 s ; Windows
+    /// patiente en affichant la raison ci-dessous au lieu de « ne répond pas ».
+    /// </summary>
+    private void OnWindowsSessionEnding(object? sender, SessionEndingCancelEventArgs e)
+    {
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        try
+        {
+            if (hwnd != IntPtr.Zero)
+                ShutdownBlockReasonCreate(hwnd, Loc.T("Locking AirPods audio…", "Verrouillage de l'audio des AirPods…"));
+            _airPods.LockForSessionEnd();
+        }
+        catch (Exception ex) { Log.Write($"AirPods : verrouillage à l'arrêt — {ex.Message}"); }
+        finally
+        {
+            if (hwnd != IntPtr.Zero) ShutdownBlockReasonDestroy(hwnd);
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        System.Windows.Application.Current.SessionEnding -= OnWindowsSessionEnding;
         _pollTimer?.Stop();
         _retryTimer?.Stop();
         _watcher?.Stop();

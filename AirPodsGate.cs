@@ -846,8 +846,22 @@ internal sealed class AirPodsGate : IDisposable
 
     // ======================================================== Événements système
 
+    // Filet de sécurité seulement : SystemEvents tourne sur son propre thread et
+    // perd souvent la course contre WPF, qui ferme la fenêtre (donc Dispose,
+    // qui désabonne) avant que ce rappel ne passe — vu au redémarrage du
+    // 15/11/2026 : AirPods laissés déverrouillés, Windows s'y est reconnecté
+    // au démarrage. Le vrai chemin est LockForSessionEnd, appelé par
+    // Application.SessionEnding (thread UI, avant toute fermeture).
     private void OnSessionEnding(object? sender, SessionEndingEventArgs e) =>
-        RunOnUiNow(() => LockSynchronously("arrêt de Windows / fermeture de session"));
+        RunOnUiNow(LockForSessionEnd);
+
+    /// <summary>
+    /// Arrêt / redémarrage / fermeture de session : verrouille l'audio MÊME si
+    /// les AirPods sont connectés (contrairement à ShutdownAsync), sinon Windows
+    /// s'y reconnecte seul au prochain démarrage, avant le lancement de l'app.
+    /// Synchrone (à appeler sur le thread UI) : Windows attend la réponse.
+    /// </summary>
+    public void LockForSessionEnd() => LockSynchronously("arrêt de Windows / fermeture de session");
 
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
     {
